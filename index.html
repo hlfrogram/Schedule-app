@@ -261,6 +261,11 @@
     -webkit-box-orient:vertical;
   }
   .ev-more{font-size:7.5px; color:var(--ink-soft); margin-top:1px;}
+  .ev-dot{
+    display:inline-block; width:6px; height:6px; border-radius:50%;
+    background:var(--rust); margin-right:4px; vertical-align:middle;
+    box-shadow:0 1px 1px var(--shadow);
+  }
 
   /* Side panel */
   .overlay{
@@ -643,6 +648,19 @@
     <div class="viewonly-badge hidden" id="viewOnlyBadge">👀 읽기 전용으로 보고 있어요 (편집 불가)</div>
     <p class="subtitle">일정에 사진, 준비물, 안내자료를 핀으로 꽂아두듯 함께 정리하세요.</p>
 
+    <div class="cal-header">
+      <div class="cal-title" id="calTitle"></div>
+      <div class="nav-btns">
+        <button class="today-btn" id="btnToday">오늘</button>
+        <button id="btnPrev">◀</button>
+        <button id="btnNext">▶</button>
+      </div>
+    </div>
+    <div class="weekdays">
+      <div>일</div><div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div>토</div>
+    </div>
+    <div class="grid" id="grid"></div>
+
     <div class="prompt-box" id="promptBox">
       <label for="promptInput">어떤 일정인지 편하게 말해주세요</label>
       <div id="editBanner" class="edit-banner hidden"></div>
@@ -657,19 +675,6 @@
       <button id="btnGenerate">AI로 일정 만들기</button>
       <div class="prompt-status" id="promptStatus"></div>
     </div>
-
-    <div class="cal-header">
-      <div class="cal-title" id="calTitle"></div>
-      <div class="nav-btns">
-        <button class="today-btn" id="btnToday">오늘</button>
-        <button id="btnPrev">◀</button>
-        <button id="btnNext">▶</button>
-      </div>
-    </div>
-    <div class="weekdays">
-      <div>일</div><div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div>토</div>
-    </div>
-    <div class="grid" id="grid"></div>
   </div>
 </div>
 
@@ -710,6 +715,14 @@ const randCode = ()=> Math.random().toString(36).slice(2,10);
 
 function dstr(y,m,d){ return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
 function todayStr(){ const t=new Date(); return dstr(t.getFullYear(), t.getMonth(), t.getDate()); }
+
+// 하루 여러 일정을 시작 시간이 이른 순서대로 정렬 (시간 없는 일정은 맨 뒤)
+function sortEventsByTime(evs){
+  if(!Array.isArray(evs) || evs.length < 2) return evs;
+  const key = (ev)=> (ev.time && /^\d{1,2}:\d{2}$/.test(ev.time)) ? ev.time.padStart(5,'0') : '99:99';
+  evs.sort((a,b)=> key(a).localeCompare(key(b)));
+  return evs;
+}
 
 function eventsToStateMap(rows){
   const map = {};
@@ -1058,6 +1071,7 @@ function renderCalendar(){
     const key = dstr(y,m,d);
     const isToday = key === todayStr();
     const evs = state.events[key] || [];
+    sortEventsByTime(evs);
     const cell = document.createElement('div');
     cell.className = 'day-cell'+(isToday?' today':'');
     cell.dataset.date = key;
@@ -1074,7 +1088,7 @@ function renderCalendar(){
     }
     let evHtml = '';
     if(evs.length){
-      evHtml = `<div class="ev-title">${escapeHtml(evs[0].title)}</div>`;
+      evHtml = `<div class="ev-title"><span class="ev-dot"></span>${escapeHtml(evs[0].title)}</div>`;
       if(evs.length>1) evHtml += `<div class="ev-more">+${evs.length-1}개 더보기</div>`;
     }
     cell.innerHTML = `<div class="day-num">${d}</div>${pinsHtml}${evHtml}`;
@@ -1120,6 +1134,7 @@ function renderPanel(){
 
   const dateKey = state.ui.date;
   const evs = state.events[dateKey] || [];
+  sortEventsByTime(evs);
 
   if(state.ui.view === 'list'){
     body.innerHTML = `
