@@ -4,7 +4,7 @@
 // 응답을 다시 프론트엔드가 이해하는 형식으로 되돌려줍니다.
 // 키는 서버 환경변수 GEMINI_API_KEY 로만 사용 — 절대 프론트 코드에 넣지 마세요.
 
-const GEMINI_MODEL = 'gemini-2.0-flash'; // 무료 티어 지원 모델
+const GEMINI_MODEL = 'gemini-2.5-flash'; // 무료 티어 지원 모델
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
