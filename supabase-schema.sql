@@ -1,17 +1,5 @@
--- ===== 일정 핀보드 전체 스키마 (완성본) =====
-
--- 0단계: 잔재 정리
-drop function if exists get_board_members(uuid);
-drop function if exists join_board_by_invite_code(text);
-drop function if exists is_board_owner(uuid);
-drop function if exists is_board_member(uuid);
-drop table if exists board_members cascade;
-drop table if exists events cascade;
-drop table if exists boards cascade;
-
 create extension if not exists pgcrypto;
 
--- 1단계: 테이블
 create table boards (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references auth.users(id) on delete cascade,
@@ -48,50 +36,30 @@ alter table boards enable row level security;
 alter table events enable row level security;
 alter table board_members enable row level security;
 
--- 2단계: 헬퍼 함수 (security definer로 순환참조 없이 멤버십 체크)
 create or replace function is_board_member(p_board_id uuid)
 returns boolean language sql security definer set search_path = public stable as $$
-  select exists (
-    select 1 from board_members
-    where board_id = p_board_id and user_id = auth.uid()
-  );
+  select exists (select 1 from board_members where board_id = p_board_id and user_id = auth.uid());
 $$;
 
 create or replace function is_board_owner(p_board_id uuid)
 returns boolean language sql security definer set search_path = public stable as $$
-  select exists (
-    select 1 from board_members
-    where board_id = p_board_id and user_id = auth.uid() and role = 'owner'
-  );
+  select exists (select 1 from board_members where board_id = p_board_id and user_id = auth.uid() and role = 'owner');
 $$;
 
--- 3단계: RLS 정책
-create policy "boards_select" on boards for select
-  using (owner_id = auth.uid() or is_board_member(id));
-create policy "boards_insert" on boards for insert
-  with check (owner_id = auth.uid());
-create policy "boards_update" on boards for update
-  using (is_board_owner(id));
-create policy "boards_delete" on boards for delete
-  using (owner_id = auth.uid());
+create policy "boards_select" on boards for select using (owner_id = auth.uid() or is_board_member(id));
+create policy "boards_insert" on boards for insert with check (owner_id = auth.uid());
+create policy "boards_update" on boards for update using (is_board_owner(id));
+create policy "boards_delete" on boards for delete using (owner_id = auth.uid());
 
-create policy "events_select" on events for select
-  using (is_board_member(board_id));
-create policy "events_insert" on events for insert
-  with check (is_board_member(board_id));
-create policy "events_update" on events for update
-  using (is_board_member(board_id));
-create policy "events_delete" on events for delete
-  using (is_board_member(board_id));
+create policy "events_select" on events for select using (is_board_member(board_id));
+create policy "events_insert" on events for insert with check (is_board_member(board_id));
+create policy "events_update" on events for update using (is_board_member(board_id));
+create policy "events_delete" on events for delete using (is_board_member(board_id));
 
-create policy "members_select" on board_members for select
-  using (is_board_member(board_id));
-create policy "members_insert" on board_members for insert
-  with check (user_id = auth.uid());
-create policy "members_delete" on board_members for delete
-  using (user_id = auth.uid() or is_board_owner(board_id));
+create policy "members_select" on board_members for select using (is_board_member(board_id));
+create policy "members_insert" on board_members for insert with check (user_id = auth.uid());
+create policy "members_delete" on board_members for delete using (user_id = auth.uid() or is_board_owner(board_id));
 
--- 4단계: 앱이 호출하는 RPC 함수
 create or replace function join_board_by_invite_code(p_code text)
 returns void language plpgsql security definer set search_path = public as $$
 declare
@@ -114,8 +82,5 @@ language sql security definer set search_path = public as $$
   from board_members bm
   join auth.users u on u.id = bm.user_id
   where bm.board_id = p_board_id
-    and exists (
-      select 1 from board_members me
-      where me.board_id = p_board_id and me.user_id = auth.uid()
-    );
+    and exists (select 1 from board_members me where me.board_id = p_board_id and me.user_id = auth.uid());
 $$;
