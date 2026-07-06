@@ -572,6 +572,17 @@
   .group-status{font-family:'IBM Plex Mono',monospace; font-size:10.5px; margin-top:8px; min-height:14px;}
   .group-status.error{color:var(--rust);}
   .group-status.ok{color:var(--teal);}
+
+  .edit-banner{
+    background:var(--ochre-soft); border:1px solid var(--ochre);
+    border-radius:8px; padding:8px 10px; margin-bottom:10px;
+    font-size:11.5px; color:var(--ink-soft);
+  }
+  .edit-banner b{color:var(--ink);}
+  .edit-banner button{
+    background:none; border:none; color:var(--rust); cursor:pointer;
+    font-size:11px; text-decoration:underline; padding:0; margin-left:6px;
+  }
 </style>
 </head>
 <body>
@@ -634,6 +645,7 @@
 
     <div class="prompt-box" id="promptBox">
       <label for="promptInput">어떤 일정인지 편하게 말해주세요</label>
+      <div id="editBanner" class="edit-banner hidden"></div>
       <textarea id="promptInput" placeholder="예: 다음주 금요일 오후 2시에 강남에서 클라이언트 미팅 있어. 발표자료랑 노트북 챙겨야 함"></textarea>
 
       <div class="attach-row">
@@ -690,7 +702,8 @@ const state = {
   inviteCode: null,
   members: [],
   myUserId: null,
-  authFlow: 'create' // 'create' | 'join' — 로그인 버튼을 눌렀을 때 목적
+  authFlow: 'create', // 'create' | 'join' — 로그인 버튼을 눌렀을 때 목적
+  editTarget: null // {date, id, title} — 선택된 일정 (있으면 프롬프트가 수정, 없으면 새로 추가)
 };
 const newId = ()=> 'id'+Math.random().toString(36).slice(2,9);
 const randCode = ()=> Math.random().toString(36).slice(2,10);
@@ -1149,6 +1162,7 @@ function renderPanel(){
       <div class="panel-heading">${escapeHtml(ev.title)}</div>
       <div class="detail-meta">${ev.time?ev.time+' · ':''}${escapeHtml(ev.location||'')}</div>
       ${ev.memo?`<div class="detail-memo">${escapeHtml(ev.memo)}</div>`:''}
+      ${state.readOnly ? '' : '<button class="add-card-btn" id="btnEditByPrompt" style="margin-bottom:16px;">✏️ 이 일정을 프롬프트로 수정하기</button>'}
 
       <div class="section-label"><span class="dot" style="background:var(--teal)"></span>사진</div>
       <div class="photo-row" id="photoRow"></div>
@@ -1173,6 +1187,12 @@ function renderPanel(){
     renderDocs(ev);
 
     if(state.readOnly) return;
+
+    const btnEdit = document.getElementById('btnEditByPrompt');
+    if(btnEdit) btnEdit.addEventListener('click', ()=>{
+      setEditTarget(dateKey, ev);
+      focusPromptForDate();
+    });
 
     document.getElementById('btnAddPhoto').addEventListener('click', ()=>{
       const input = document.getElementById('photoInput');
@@ -1390,12 +1410,143 @@ function focusPromptForDate(){
   ta.scrollIntoView({behavior:'smooth', block:'center'});
 }
 
+function setEditTarget(dateKey, ev){
+  if(state.readOnly) return;
+  state.editTarget = { date: dateKey, id: ev.id, title: ev.title };
+  renderEditBanner();
+}
+function clearEditTarget(){
+  state.editTarget = null;
+  renderEditBanner();
+}
+function renderEditBanner(){
+  const banner = document.getElementById('editBanner');
+  const btn = document.getElementById('btnGenerate');
+  if(!banner) return;
+  if(state.editTarget){
+    banner.classList.remove('hidden');
+    banner.innerHTML = '✏️ <b>' + escapeHtml(state.editTarget.title||'선택한 일정') + '</b> 수정 중 — 프롬프트 내용으로 이 일정을 수정합니다. <button type="button" id="btnClearEdit">✕ 해제(새 일정)</button>';
+    const c = document.getElementById('btnClearEdit');
+    if(c) c.addEventListener('click', clearEditTarget);
+    if(btn) btn.textContent = 'AI로 일정 수정';
+  } else {
+    banner.classList.add('hidden');
+    banner.innerHTML = '';
+    if(btn) btn.textContent = 'AI로 일정 만들기';
+  }
+}
+
+async function editEventFromPrompt(text){
+  const ta = document.getElementById('promptInput');
+  const btn = document.getElementById('btnGenerate');
+  const status = document.getElementById('promptStatus');
+  const target = state.editTarget;
+  const targetEv = target ? (state.events[target.date]||[]).find(e=>e.id===target.id) : null;
+  if(!targetEv){
+    clearEditTarget();
+    status.textContent = '수정할 일정을 찾지 못했어요. 새 일정 모드로 다시 시도해주세요.';
+    status.className = 'prompt-status error';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '일정 수정 중...';
+  status.textContent = '';
+  status.className = 'prompt-status';
+
+  const todayIso = todayStr();
+  const cur = {
+    date: target.date,
+    title: targetEv.title,
+    time: targetEv.time,
+    location: targetEv.location,
+    memo: targetEv.memo,
+    checklist: (targetEv.checklist||[]).map(c=>c.text)
+  };
+  const prompt = '오늘 날짜는 ' + todayIso + ' 입니다.\n' +
+    '아래는 사용자가 수정하려는 기존 일정입니다(JSON):\n' +
+    JSON.stringify(cur) + '\n\n' +
+    '사용자의 수정 요청:\n"""\n' + text + '\n"""\n\n' +
+    '이 요청을 반영해 수정된 일정 하나를 아래 JSON 형식으로만 출력하세요. 요청에 언급되지 않은 항목은 기존 값을 그대로 유지하세요. 인사말·설명·코드블록 표시 없이 순수 JSON만 출력:\n' +
+    '{"date":"YYYY-MM-DD","title":"...","time":"HH:MM 또는 빈 문자열","location":"...","memo":"...","checklist":["..."]}';
+
+  let rawForDebug = '';
+  try{
+    const response = await fetch("/api/claude", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role:"user", content: prompt }] })
+    });
+    const data = await response.json();
+    if(!response.ok || data.error){
+      const msg = (data.error && data.error.message) ? data.error.message : ('요청 실패 (status ' + response.status + ')');
+      throw new Error('API 오류: ' + msg);
+    }
+    if(!data.content || !Array.isArray(data.content)){
+      throw new Error('AI 응답에 content가 없어요.');
+    }
+    const raw = data.content.map(b=>b.text||'').join('').replace(/```json|```/g,'').trim();
+    rawForDebug = raw;
+    let parsed;
+    try{ parsed = JSON.parse(raw); }
+    catch(e){
+      const match = raw.match(/\{[\s\S]*\}/);
+      if(match){ parsed = JSON.parse(match[0]); }
+      else { throw new Error('AI가 JSON이 아닌 답을 줬어요: ' + raw.slice(0,150)); }
+    }
+    const e = parsed.events ? parsed.events[0] : parsed;
+    if(!e){ throw new Error('수정 결과를 이해하지 못했어요.'); }
+
+    const newDate = e.date || target.date;
+    targetEv.title = e.title || targetEv.title;
+    targetEv.time = (e.time === null || e.time === undefined) ? targetEv.time : e.time;
+    targetEv.location = (e.location === undefined) ? targetEv.location : (e.location || '');
+    targetEv.memo = (e.memo === undefined) ? targetEv.memo : (e.memo || '');
+    if(Array.isArray(e.checklist)){
+      const existingTexts = targetEv.checklist.map(c=>c.text);
+      for(const t of e.checklist){
+        if(t && !existingTexts.includes(t)){
+          targetEv.checklist.push({id:newId(), text:t, done:false});
+        }
+      }
+    }
+    if(newDate !== target.date){
+      state.events[target.date] = (state.events[target.date]||[]).filter(x=>x.id!==targetEv.id);
+      if(!state.events[newDate]) state.events[newDate] = [];
+      state.events[newDate].push(targetEv);
+    }
+    await dbUpdateEvent(targetEv, {
+      event_date: newDate,
+      title: targetEv.title,
+      time: targetEv.time,
+      location: targetEv.location,
+      memo: targetEv.memo,
+      checklist: targetEv.checklist
+    });
+
+    status.textContent = '일정을 수정했어요.';
+    status.className = 'prompt-status ok';
+    ta.value = '';
+    clearEditTarget();
+    const [fy,fm] = newDate.split('-').map(Number);
+    state.cursor = new Date(fy, fm-1, 1);
+    renderCalendar();
+  }catch(err){
+    console.error('edit error:', err, '\nraw:', rawForDebug);
+    status.textContent = err.message || '수정 중 문제가 생겼어요. 다시 시도해주세요.';
+    status.className = 'prompt-status error';
+  }
+  btn.disabled = false;
+  renderEditBanner();
+}
+
 async function generateFromPrompt(){
   const ta = document.getElementById('promptInput');
   const btn = document.getElementById('btnGenerate');
   const status = document.getElementById('promptStatus');
   const text = ta.value.trim();
   if(!text){ ta.focus(); return; }
+  if(state.editTarget){ return editEventFromPrompt(text); }
 
   btn.disabled = true;
   btn.textContent = '일정 만드는 중...';
