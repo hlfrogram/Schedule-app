@@ -1,0 +1,1526 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>일정 핀보드</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,600;0,700;1,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --board:#33413A;
+    --board-dark:#26302B;
+    --paper:#ECE3CE;
+    --paper-edge:#CDBD93;
+    --paper-line:#DED0AC;
+    --ink:#24303A;
+    --ink-soft:#5B4636;
+    --teal:#3E7C74;
+    --teal-soft:#DCE9E6;
+    --ochre:#C2871F;
+    --ochre-soft:#F3E3C4;
+    --rust:#B75B3D;
+    --rust-soft:#F0DAD0;
+    --white-note:#FFFDF7;
+    --shadow: rgba(15,15,10,0.35);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(circle at 1px 1px, rgba(255,255,255,0.05) 1px, transparent 0) 0 0/22px 22px,
+      var(--board);
+    min-height:100vh;
+    font-family:'Inter',sans-serif;
+    color:var(--ink);
+    overflow-x:hidden;
+  }
+  #app{
+    max-width:640px;
+    margin:0 auto;
+    padding:20px 16px 40px;
+  }
+  .cover-tab{
+    display:inline-flex;
+    align-items:center;
+    gap:7px;
+    background:var(--paper);
+    border:1px solid var(--paper-edge);
+    border-bottom:none;
+    border-radius:8px 8px 0 0;
+    padding:6px 16px 10px;
+    box-shadow:0 -2px 0 rgba(0,0,0,0.05) inset;
+  }
+  .pin-dot{
+    width:8px;height:8px;border-radius:50%;
+    background:var(--rust);
+    box-shadow:0 1px 2px var(--shadow);
+  }
+  h1{
+    font-family:'Fraunces',serif;
+    font-weight:700;
+    font-size:16px;
+    margin:0;
+    letter-spacing:0.01em;
+  }
+  .board-sheet{
+    background:var(--paper);
+    border:1px solid var(--paper-edge);
+    border-radius:0 12px 12px 12px;
+    box-shadow:0 14px 30px var(--shadow), 0 2px 0 var(--paper-edge) inset;
+    padding:16px 16px 18px;
+    position:relative;
+  }
+  .subtitle{
+    font-size:11.5px;
+    color:var(--ink-soft);
+    margin:2px 0 14px;
+  }
+  .prompt-box{
+    background:var(--white-note);
+    border:1px solid var(--paper-edge);
+    border-radius:9px;
+    padding:12px 14px 14px;
+    margin-bottom:16px;
+  }
+  .prompt-box label{
+    display:block;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10.5px;
+    color:var(--ink-soft);
+    margin-bottom:6px;
+  }
+  .prompt-box textarea{
+    width:100%;
+    font-family:'Inter',sans-serif;
+    font-size:12.5px;
+    padding:8px 9px;
+    border:1px solid var(--paper-edge);
+    border-radius:6px;
+    background:#fff;
+    color:var(--ink);
+    resize:vertical;
+    min-height:44px;
+  }
+  .attach-row{
+    display:flex; gap:6px;
+    margin-top:9px;
+  }
+  .attach-btn{
+    background:var(--white-note);
+    border:1px dashed var(--paper-edge);
+    border-radius:6px;
+    padding:5px 10px;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10.5px;
+    color:var(--ink-soft);
+    cursor:pointer;
+  }
+  .attach-btn:hover{border-color:var(--teal); color:var(--teal);}
+  .pending-row{
+    display:flex; flex-wrap:wrap; gap:6px;
+    margin-top:8px;
+  }
+  .pending-row:empty{margin-top:0;}
+  .pending-chip{
+    display:inline-flex; align-items:center; gap:6px;
+    background:#fff;
+    border:1px solid var(--paper-edge);
+    border-radius:6px;
+    padding:4px 6px 4px 4px;
+    font-size:11px;
+  }
+  .pending-chip img{
+    width:22px; height:22px; object-fit:cover; border-radius:3px;
+  }
+  .pending-chip .pending-doc-icon{font-size:13px;}
+  .pending-chip button{
+    background:none; border:none; cursor:pointer;
+    color:var(--ink-soft); font-size:12px; line-height:1;
+    padding:0 2px;
+  }
+  .pending-chip button:hover{color:var(--rust);}
+
+  .prompt-box button{
+    margin-top:8px;
+    background:var(--teal);
+    color:#fff;
+    border:none;
+    border-radius:7px;
+    padding:8px 16px;
+    font-size:12.5px;
+    font-weight:600;
+    cursor:pointer;
+  }
+  .prompt-box button:hover{opacity:0.9;}
+  .prompt-box button:disabled{opacity:0.6; cursor:default;}
+  .prompt-status{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10.5px;
+    color:var(--ink-soft);
+    margin-top:7px;
+    min-height:14px;
+  }
+  .prompt-status.error{color:var(--rust);}
+  .prompt-status.ok{color:var(--teal);}
+
+  .cal-header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:10px;
+  }
+  .cal-title{
+    font-family:'Fraunces',serif;
+    font-size:18px;
+    font-weight:600;
+  }
+  .nav-btns button, .today-btn{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10.5px;
+    background:var(--white-note);
+    border:1px solid var(--paper-edge);
+    border-radius:6px;
+    padding:5px 9px;
+    cursor:pointer;
+    color:var(--ink);
+    transition:transform .12s ease, box-shadow .12s ease;
+  }
+  .nav-btns button:hover, .today-btn:hover{
+    transform:translateY(-1px);
+    box-shadow:0 3px 8px rgba(0,0,0,0.12);
+  }
+  .nav-btns{display:flex; gap:6px;}
+  .weekdays{
+    display:grid;
+    grid-template-columns:repeat(7,1fr);
+    gap:4px;
+    margin-bottom:4px;
+  }
+  .weekdays div{
+    text-align:center;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:9.5px;
+    color:var(--ink-soft);
+    letter-spacing:0.06em;
+  }
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(7,1fr);
+    gap:4px;
+  }
+  .day-cell{
+    position:relative;
+    aspect-ratio:1/0.85;
+    background:
+      repeating-linear-gradient(var(--paper-line) 0 1px, transparent 1px 100%),
+      var(--white-note);
+    background-size:100% 11px;
+    border:1px solid var(--paper-edge);
+    border-radius:6px;
+    padding:4px 5px;
+    cursor:pointer;
+    transition:transform .12s ease, box-shadow .12s ease;
+  }
+  .day-cell:hover{
+    transform:translateY(-2px);
+    box-shadow:0 6px 14px rgba(0,0,0,0.15);
+    z-index:2;
+  }
+  .day-cell.empty{visibility:hidden; cursor:default;}
+  .day-cell.today{border-color:var(--ochre); border-width:2px;}
+  .day-num{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10px;
+    color:var(--ink-soft);
+  }
+  .day-cell.today .day-num{color:var(--ochre); font-weight:600;}
+  .pins{
+    position:absolute;
+    top:4px; right:5px;
+    display:flex;
+    gap:2px;
+  }
+  .pin{
+    width:5px;height:5px;border-radius:50%;
+    box-shadow:0 1px 1px var(--shadow);
+  }
+  .pin.photo{background:var(--teal);}
+  .pin.check{background:var(--ochre);}
+  .pin.doc{background:var(--rust);}
+  .ev-title{
+    margin-top:10px;
+    font-size:8.5px;
+    line-height:1.25;
+    color:var(--ink);
+    overflow:hidden;
+    text-overflow:ellipsis;
+    display:-webkit-box;
+    -webkit-line-clamp:2;
+    -webkit-box-orient:vertical;
+  }
+  .ev-more{font-size:7.5px; color:var(--ink-soft); margin-top:1px;}
+
+  /* Side panel */
+  .overlay{
+    position:fixed; inset:0;
+    background:rgba(20,20,15,0.35);
+    opacity:0; pointer-events:none;
+    transition:opacity .2s ease;
+    z-index:10;
+  }
+  .overlay.open{opacity:1; pointer-events:auto;}
+  .panel{
+    position:fixed;
+    top:0; right:-420px;
+    width:400px; max-width:92vw;
+    height:100%;
+    background:var(--paper);
+    border-left:1px solid var(--paper-edge);
+    box-shadow:-10px 0 30px var(--shadow);
+    transition:right .28s cubic-bezier(.2,.8,.3,1);
+    z-index:11;
+    overflow-y:auto;
+    padding:22px 22px 60px;
+  }
+  .panel.open{right:0;}
+  .panel-close{
+    position:absolute; top:16px; right:16px;
+    background:none; border:none; font-size:20px; cursor:pointer;
+    color:var(--ink-soft);
+  }
+  .panel-date{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12px;
+    color:var(--ink-soft);
+    letter-spacing:0.05em;
+    margin-bottom:2px;
+  }
+  .panel-heading{
+    font-family:'Fraunces',serif;
+    font-size:21px;
+    font-weight:600;
+    margin:0 0 16px;
+  }
+  .back-link{
+    background:none; border:none; cursor:pointer;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11.5px;
+    color:var(--teal);
+    padding:0; margin-bottom:14px;
+  }
+  .event-list-item{
+    background:var(--white-note);
+    border:1px solid var(--paper-edge);
+    border-radius:8px;
+    padding:12px 14px;
+    margin-bottom:10px;
+    cursor:pointer;
+    transition:transform .12s ease;
+  }
+  .event-list-item:hover{transform:translateX(2px);}
+  .event-list-item .t{font-weight:600; font-size:14px;}
+  .event-list-item .m{font-size:12px; color:var(--ink-soft); margin-top:3px;}
+  .add-card-btn{
+    width:100%;
+    background:var(--white-note);
+    border:1.5px dashed var(--paper-edge);
+    border-radius:8px;
+    padding:12px;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12.5px;
+    color:var(--ink-soft);
+    cursor:pointer;
+    margin-top:6px;
+  }
+  .add-card-btn:hover{border-color:var(--teal); color:var(--teal);}
+  .field{margin-bottom:12px;}
+  .field label{
+    display:block; font-size:11.5px; font-family:'IBM Plex Mono',monospace;
+    color:var(--ink-soft); margin-bottom:5px;
+  }
+  .field input, .field textarea{
+    width:100%;
+    font-family:'Inter',sans-serif;
+    font-size:13.5px;
+    padding:9px 10px;
+    border:1px solid var(--paper-edge);
+    border-radius:6px;
+    background:var(--white-note);
+    color:var(--ink);
+  }
+  .field textarea{resize:vertical; min-height:56px;}
+  .save-btn{
+    background:var(--ink);
+    color:var(--white-note);
+    border:none; border-radius:7px;
+    padding:10px 18px;
+    font-size:13px; font-weight:600;
+    cursor:pointer;
+    margin-top:4px;
+  }
+  .save-btn:hover{opacity:0.88;}
+
+  .detail-meta{font-size:12.5px; color:var(--ink-soft); margin-bottom:2px;}
+  .detail-memo{font-size:13px; margin:10px 0 20px; line-height:1.5;}
+  .section-label{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    letter-spacing:0.05em;
+    color:var(--ink-soft);
+    margin:22px 0 10px;
+    display:flex; align-items:center; gap:6px;
+  }
+  .section-label .dot{width:7px;height:7px;border-radius:50%;}
+
+  .photo-row{display:flex; flex-wrap:wrap; gap:14px;}
+  .polaroid{
+    background:#fff;
+    padding:6px 6px 20px;
+    box-shadow:0 4px 10px var(--shadow);
+    width:104px;
+    position:relative;
+  }
+  .polaroid:nth-child(odd){transform:rotate(-3deg);}
+  .polaroid:nth-child(even){transform:rotate(2.5deg);}
+  .polaroid img{width:100%; height:78px; object-fit:cover; display:block;}
+  .tape{
+    position:absolute; top:-8px; left:28px;
+    width:40px; height:16px;
+    background:rgba(255,255,255,0.55);
+    border:1px solid rgba(0,0,0,0.04);
+    transform:rotate(-4deg);
+  }
+  .tag-chip{
+    display:inline-block;
+    font-size:9.5px;
+    font-family:'IBM Plex Mono',monospace;
+    padding:2px 6px;
+    border-radius:4px;
+    margin-top:4px;
+  }
+  .tag-장소{background:var(--teal-soft); color:var(--teal);}
+  .tag-준비물{background:var(--ochre-soft); color:var(--ochre);}
+  .tag-안내자료{background:var(--rust-soft); color:var(--rust);}
+  .tag-기타{background:#e6e6e6; color:#666;}
+  .classify-btn{
+    display:block; width:100%; margin-top:5px;
+    font-size:9.5px; font-family:'IBM Plex Mono',monospace;
+    background:none; border:1px solid var(--paper-edge);
+    border-radius:4px; padding:3px 0; cursor:pointer;
+    color:var(--ink-soft);
+  }
+  .classify-btn:hover{border-color:var(--teal); color:var(--teal);}
+  .suggestion-chip{
+    display:block; width:100%; margin-top:4px;
+    font-size:9px; text-align:left;
+    background:var(--teal-soft); border:none;
+    border-radius:4px; padding:4px 5px; cursor:pointer;
+    color:var(--teal); line-height:1.3;
+  }
+
+  .checklist{
+    background:repeating-linear-gradient(var(--white-note) 0 27px, var(--paper-line) 27px 28px);
+    border:1px solid var(--paper-edge);
+    border-radius:6px;
+    padding:4px 12px;
+  }
+  .check-item{
+    display:flex; align-items:center; gap:8px;
+    height:27px; font-size:13px;
+  }
+  .check-item input[type=checkbox]{accent-color:var(--teal);}
+  .check-item.done span{text-decoration:line-through; color:var(--ink-soft);}
+  .add-row{display:flex; gap:6px; margin-top:10px;}
+  .add-row input{flex:1;}
+  .add-row button{
+    background:var(--ink); color:var(--white-note); border:none;
+    border-radius:6px; padding:0 14px; cursor:pointer; font-size:13px;
+  }
+
+  .doc-chip{
+    display:inline-flex; align-items:center; gap:6px;
+    background:var(--rust-soft); color:var(--rust);
+    font-size:12px; padding:6px 10px; border-radius:6px;
+    margin:0 6px 8px 0;
+  }
+  .hidden-input{display:none;}
+  .empty-hint{font-size:12.5px; color:var(--ink-soft); margin-top:6px;}
+
+  /* Auth gate */
+  #authGate{
+    min-height:100vh;
+    display:flex; align-items:center; justify-content:center;
+    padding:20px;
+  }
+  .auth-card{
+    width:100%; max-width:320px;
+    background:var(--paper);
+    border:1px solid var(--paper-edge);
+    border-radius:12px;
+    box-shadow:0 14px 30px var(--shadow);
+    padding:22px 20px;
+  }
+  .auth-card h1{font-size:16px; margin-bottom:4px;}
+  .auth-sub{font-size:11.5px; color:var(--ink-soft); margin:0 0 16px;}
+  .auth-tabs{display:flex; gap:6px; margin-bottom:14px;}
+  .auth-tab{
+    flex:1; text-align:center; cursor:pointer;
+    font-family:'IBM Plex Mono',monospace; font-size:11px;
+    padding:6px 0; border:1px solid var(--paper-edge); border-radius:6px;
+    color:var(--ink-soft); background:var(--white-note);
+  }
+  .auth-tab.active{background:var(--teal); color:#fff; border-color:var(--teal);}
+  .auth-card input{
+    width:100%; font-family:'Inter',sans-serif; font-size:13px;
+    padding:9px 10px; margin-bottom:8px;
+    border:1px solid var(--paper-edge); border-radius:6px;
+    background:#fff; color:var(--ink);
+  }
+  .auth-card button.auth-submit{
+    width:100%; margin-top:4px;
+    background:var(--teal); color:#fff; border:none;
+    border-radius:7px; padding:9px 0; font-size:13px; font-weight:600; cursor:pointer;
+  }
+  .auth-card button.auth-submit:disabled{opacity:0.6; cursor:default;}
+  .auth-status{
+    font-family:'IBM Plex Mono',monospace; font-size:10.5px;
+    margin-top:9px; min-height:14px; color:var(--ink-soft);
+  }
+  .auth-status.error{color:var(--rust);}
+  .auth-status.ok{color:var(--teal);}
+
+  .user-bar{
+    display:flex; align-items:center; justify-content:space-between;
+    max-width:640px; margin:0 auto 8px; padding:0 2px;
+    font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--paper);
+  }
+  .user-bar button{
+    background:none; border:1px solid var(--paper-edge); color:var(--paper);
+    border-radius:6px; padding:4px 9px; cursor:pointer; font-size:10.5px;
+  }
+  .hidden{display:none !important;}
+
+  .share-box{
+    display:flex; align-items:center; justify-content:space-between;
+    background:var(--teal-soft); border:1px solid var(--teal);
+    border-radius:8px; padding:8px 12px; margin-bottom:12px;
+    font-size:12px; color:var(--ink);
+  }
+  .share-box b{font-family:'IBM Plex Mono',monospace; letter-spacing:0.04em;}
+  .share-box button{
+    background:var(--teal); color:#fff; border:none; border-radius:6px;
+    padding:5px 10px; font-size:11px; cursor:pointer;
+  }
+  .viewonly-badge{
+    background:var(--ochre-soft); color:var(--ochre);
+    border:1px solid var(--ochre);
+    border-radius:8px; padding:8px 12px; margin-bottom:12px;
+    font-size:12px; font-weight:600;
+  }
+
+  .share-box .share-actions{display:flex; gap:6px;}
+  .share-box button.secondary{background:var(--ink); }
+
+  .editor-badge{
+    display:flex; align-items:center; justify-content:space-between;
+    background:var(--paper); border:1px solid var(--paper-edge);
+    border-radius:8px; padding:8px 12px; margin-bottom:12px;
+    font-size:12px; color:var(--ink);
+  }
+  .editor-badge button{
+    background:var(--ink); color:#fff; border:none; border-radius:6px;
+    padding:5px 10px; font-size:11px; cursor:pointer;
+  }
+
+  .group-panel{padding:4px 2px;}
+  .group-panel h2{font-size:16px; margin:0 0 10px;}
+  .group-invite-box{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    background:var(--teal-soft); border:1px solid var(--teal);
+    border-radius:8px; padding:9px 12px; margin-bottom:14px; font-size:12px;
+  }
+  .group-invite-box b{font-family:'IBM Plex Mono',monospace; letter-spacing:0.04em;}
+  .group-invite-box .grp-btns{display:flex; gap:6px; flex-shrink:0;}
+  .group-invite-box button{
+    background:var(--teal); color:#fff; border:none; border-radius:6px;
+    padding:5px 9px; font-size:10.5px; cursor:pointer; white-space:nowrap;
+  }
+  .group-invite-box button.ghost{background:none; border:1px solid var(--teal); color:var(--teal);}
+  .member-list{list-style:none; margin:0; padding:0;}
+  .member-row{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:8px 2px; border-bottom:1px solid var(--paper-edge); font-size:12.5px;
+  }
+  .member-row:last-child{border-bottom:none;}
+  .member-email{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:190px;}
+  .role-chip{
+    font-family:'IBM Plex Mono',monospace; font-size:10px; padding:2px 7px;
+    border-radius:99px; margin-left:8px; flex-shrink:0;
+  }
+  .role-chip.owner{background:var(--ochre-soft); color:var(--ochre);}
+  .role-chip.editor{background:var(--teal-soft); color:var(--teal);}
+  .member-kick{
+    background:none; border:1px solid var(--rust); color:var(--rust);
+    border-radius:6px; padding:3px 8px; font-size:10.5px; cursor:pointer; margin-left:8px;
+  }
+  .group-leave-btn{
+    margin-top:14px; width:100%; background:none; border:1px solid var(--rust);
+    color:var(--rust); border-radius:7px; padding:9px 0; font-size:12.5px; cursor:pointer;
+  }
+  .group-status{font-family:'IBM Plex Mono',monospace; font-size:10.5px; margin-top:8px; min-height:14px;}
+  .group-status.error{color:var(--rust);}
+  .group-status.ok{color:var(--teal);}
+</style>
+</head>
+<body>
+
+<div id="authGate">
+  <div class="auth-card" id="modeSelectCard">
+    <h1>일정 핀보드</h1>
+    <p class="auth-sub">일정표를 만들고 편집하러 오셨나요, 공유받은 코드로 보러 오셨나요?</p>
+    <button class="auth-submit" id="btnModeEdit">로그인해서 만들기 / 편집하기</button>
+    <button class="auth-submit" id="btnModeJoin" style="margin-top:8px; background:var(--teal);">초대 코드로 그룹 참여하기</button>
+    <button class="auth-submit" id="btnModeView" style="margin-top:8px; background:var(--ink);">공유 코드로 보기</button>
+  </div>
+
+  <div class="auth-card hidden" id="loginCard">
+    <h1 id="loginCardTitle">일정 핀보드</h1>
+    <p class="auth-sub" id="loginCardSub">로그인하고 나만의 캘린더를 만들어보세요.</p>
+    <div class="auth-tabs">
+      <div class="auth-tab active" id="tabSignin">로그인</div>
+      <div class="auth-tab" id="tabSignup">회원가입</div>
+    </div>
+    <input type="email" id="authEmail" placeholder="이메일">
+    <input type="password" id="authPassword" placeholder="비밀번호 (6자 이상)">
+    <input type="text" id="joinInviteCode" class="hidden" placeholder="초대 코드 (예: 9x2m4k7p)">
+    <button class="auth-submit" id="authSubmit">로그인</button>
+    <div class="auth-status" id="authStatus"></div>
+    <button class="auth-submit" id="btnBackFromLogin" style="margin-top:10px; background:none; color:var(--ink-soft); border:1px solid var(--paper-edge);">← 뒤로</button>
+  </div>
+
+  <div class="auth-card hidden" id="viewCodeCard">
+    <h1>공유 코드로 보기</h1>
+    <p class="auth-sub">전달받은 공유 코드를 입력하면 로그인 없이 볼 수 있어요. (수정은 불가)</p>
+    <input type="text" id="viewCodeInput" placeholder="예: 7f3k9a2q">
+    <button class="auth-submit" id="btnViewSubmit">보기</button>
+    <div class="auth-status" id="viewStatus"></div>
+    <button class="auth-submit" id="btnBackFromView" style="margin-top:10px; background:none; color:var(--ink-soft); border:1px solid var(--paper-edge);">← 뒤로</button>
+  </div>
+</div>
+
+<div class="user-bar hidden" id="userBar">
+  <span id="userEmail"></span>
+  <button id="btnSignOut">나가기</button>
+</div>
+
+<div id="app" class="hidden">
+  <div class="cover-tab"><span class="pin-dot"></span><h1>일정 핀보드</h1></div>
+  <div class="board-sheet">
+    <div class="share-box hidden" id="shareBox">
+      <span>공유 코드: <b id="shareCodeText"></b></span>
+      <div class="share-actions">
+        <button id="btnCopyLink">보기 링크 복사</button>
+        <button class="secondary" id="btnOpenGroup">👥 그룹</button>
+      </div>
+    </div>
+    <div class="editor-badge hidden" id="editorBadge">
+      <span>✏️ 초대받은 그룹의 구성원으로 편집 중이에요</span>
+      <button id="btnOpenGroupEditor">👥 그룹</button>
+    </div>
+    <div class="viewonly-badge hidden" id="viewOnlyBadge">👀 읽기 전용으로 보고 있어요 (편집 불가)</div>
+    <p class="subtitle">일정에 사진, 준비물, 안내자료를 핀으로 꽂아두듯 함께 정리하세요.</p>
+
+    <div class="prompt-box" id="promptBox">
+      <label for="promptInput">어떤 일정인지 편하게 말해주세요</label>
+      <textarea id="promptInput" placeholder="예: 다음주 금요일 오후 2시에 강남에서 클라이언트 미팅 있어. 발표자료랑 노트북 챙겨야 함"></textarea>
+
+      <div class="attach-row">
+        <button type="button" class="attach-btn" id="btnAttachPhoto">+ 사진 첨부</button>
+        <button type="button" class="attach-btn" id="btnAttachDoc">+ 자료 첨부</button>
+      </div>
+      <div class="pending-row" id="pendingRow"></div>
+
+      <button id="btnGenerate">AI로 일정 만들기</button>
+      <div class="prompt-status" id="promptStatus"></div>
+    </div>
+
+    <div class="cal-header">
+      <div class="cal-title" id="calTitle"></div>
+      <div class="nav-btns">
+        <button class="today-btn" id="btnToday">오늘</button>
+        <button id="btnPrev">◀</button>
+        <button id="btnNext">▶</button>
+      </div>
+    </div>
+    <div class="weekdays">
+      <div>일</div><div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div>토</div>
+    </div>
+    <div class="grid" id="grid"></div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay"></div>
+<div class="panel" id="panel">
+  <button class="panel-close" id="panelClose">✕</button>
+  <div id="panelBody"></div>
+</div>
+
+<input type="file" id="photoInput" class="hidden-input" accept="image/*" multiple>
+<input type="file" id="docInput" class="hidden-input" multiple>
+
+<script>
+// ====== Supabase 설정 ======
+// TODO: 아래 두 값을 Supabase 프로젝트 Settings > API 에서 복사해 넣으세요.
+// anon key는 "공개되어도 되는" 키입니다 (RLS로 보호됨). service_role 키는 절대 여기 넣지 마세요.
+const SUPABASE_URL = 'https://YOUR_PROJECT.supabase.co';
+const SUPABASE_ANON_KEY = 'YOUR_ANON_PUBLIC_KEY';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const state = {
+  cursor: new Date(),
+  events: {}, // 'YYYY-MM-DD' -> [event,...]
+  ui: { date:null, eventId:null, view:'closed' },
+  mode: null,       // 'member' | 'viewer'
+  role: null,       // 'owner' | 'editor' | null(viewer)
+  readOnly: false,
+  boardId: null,
+  shareCode: null,
+  inviteCode: null,
+  members: [],
+  myUserId: null,
+  authFlow: 'create' // 'create' | 'join' — 로그인 버튼을 눌렀을 때 목적
+};
+const newId = ()=> 'id'+Math.random().toString(36).slice(2,9);
+const randCode = ()=> Math.random().toString(36).slice(2,10);
+
+function dstr(y,m,d){ return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
+function todayStr(){ const t=new Date(); return dstr(t.getFullYear(), t.getMonth(), t.getDate()); }
+
+function eventsToStateMap(rows){
+  const map = {};
+  rows.forEach(r=>{
+    const ev = {
+      id:r.id, title:r.title||'', time:r.time||'', location:r.location||'', memo:r.memo||'',
+      photos:r.photos||[], checklist:r.checklist||[], docs:r.docs||[]
+    };
+    if(!map[r.event_date]) map[r.event_date] = [];
+    map[r.event_date].push(ev);
+  });
+  return map;
+}
+
+function enterApp(){
+  document.getElementById('authGate').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  document.getElementById('promptBox').classList.toggle('hidden', state.readOnly);
+  document.getElementById('viewOnlyBadge').classList.toggle('hidden', !state.readOnly);
+  document.getElementById('shareBox').classList.toggle('hidden', state.role !== 'owner');
+  document.getElementById('editorBadge').classList.toggle('hidden', state.role !== 'editor');
+  document.getElementById('userBar').classList.toggle('hidden', state.mode !== 'member');
+  if(state.role === 'owner') document.getElementById('shareCodeText').textContent = state.shareCode;
+  renderCalendar();
+}
+
+// ---- 구성원(owner/editor) 흐름: 로그인 -> 내가 속한 board 조회, 없으면 새로 생성 -> events 로드 ----
+async function loadMemberBoard(){
+  const { data:{ user } } = await sb.auth.getUser();
+  document.getElementById('userEmail').textContent = user.email;
+  state.myUserId = user.id;
+
+  // 이 사용자가 owner 또는 editor로 속해있는 board를 찾는다 (RLS: is_board_member)
+  let { data: memberships, error } = await sb
+    .from('board_members')
+    .select('role, board_id, boards(*)')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending:true })
+    .limit(1);
+  if(error){ alert('보드 조회 오류: '+error.message); return; }
+
+  let board, role;
+  if(!memberships || memberships.length===0){
+    // 아직 어디에도 속해있지 않으면 새 board를 owner로 생성
+    const code = randCode();
+    const invite = randCode();
+    const { data: created, error: cErr } = await sb.from('boards')
+      .insert({ owner_id:user.id, title:'내 일정 핀보드', share_code:code, invite_code:invite })
+      .select().single();
+    if(cErr){ alert('보드 생성 오류: '+cErr.message); return; }
+    board = created; role = 'owner';
+
+    const { error: mErr } = await sb.from('board_members')
+      .insert({ board_id: board.id, user_id: user.id, role: 'owner' });
+    if(mErr){ alert('구성원 등록 오류: '+mErr.message); return; }
+  } else {
+    board = memberships[0].boards; role = memberships[0].role;
+  }
+
+  state.mode = 'member';
+  state.role = role;
+  state.readOnly = false;
+  state.boardId = board.id;
+  state.shareCode = board.share_code;
+  state.inviteCode = board.invite_code;
+
+  const { data: evRows, error: evErr } = await sb.from('events').select('*').eq('board_id', board.id);
+  if(evErr){ alert('일정 조회 오류: '+evErr.message); return; }
+  state.events = eventsToStateMap(evRows||[]);
+  enterApp();
+}
+
+// ---- 뷰어(읽기 전용) 흐름: 코드 입력 -> 서버 함수로 조회 ----
+async function loadViewerBoard(code){
+  const res = await fetch('/api/view-board', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ code })
+  });
+  const data = await res.json();
+  if(!res.ok){ throw new Error(data.error?.message || '코드를 확인해주세요.'); }
+
+  state.mode = 'viewer';
+  state.role = null;
+  state.readOnly = true;
+  state.boardId = data.board.id;
+  state.shareCode = code;
+  state.events = eventsToStateMap(data.events||[]);
+  enterApp();
+}
+
+// ---- DB 저장 헬퍼 (소유자 모드에서만 호출됨) ----
+async function dbInsertEvent(dateKey, ev){
+  const { data, error } = await sb.from('events').insert({
+    board_id: state.boardId,
+    event_date: dateKey,
+    title: ev.title, time: ev.time, location: ev.location, memo: ev.memo,
+    checklist: ev.checklist, docs: ev.docs, photos: ev.photos
+  }).select().single();
+  if(error){ console.error('insert error', error); return; }
+  ev.id = data.id;
+}
+async function dbUpdateEvent(ev, fields){
+  const { error } = await sb.from('events').update(fields).eq('id', ev.id);
+  if(error) console.error('update error', error);
+}
+
+// ====== 인증 게이트 UI 로직 ======
+const $ = (id)=>document.getElementById(id);
+
+function showLoginCard(flow){
+  state.authFlow = flow; // 'create' | 'join'
+  $('modeSelectCard').classList.add('hidden');
+  $('loginCard').classList.remove('hidden');
+  $('joinInviteCode').classList.toggle('hidden', flow !== 'join');
+  if(flow === 'join'){
+    $('loginCardTitle').textContent = '그룹에 참여하기';
+    $('loginCardSub').textContent = '초대 코드를 받으셨나요? 로그인(또는 회원가입) 후 코드를 입력하면 그룹의 편집자로 합류해요.';
+  } else {
+    $('loginCardTitle').textContent = '일정 핀보드';
+    $('loginCardSub').textContent = '로그인하고 나만의 캘린더를 만들어보세요.';
+  }
+}
+
+$('btnModeEdit').addEventListener('click', ()=> showLoginCard('create'));
+$('btnModeJoin').addEventListener('click', ()=> showLoginCard('join'));
+$('btnModeView').addEventListener('click', ()=>{
+  $('modeSelectCard').classList.add('hidden');
+  $('viewCodeCard').classList.remove('hidden');
+});
+$('btnBackFromLogin').addEventListener('click', ()=>{
+  $('loginCard').classList.add('hidden');
+  $('modeSelectCard').classList.remove('hidden');
+});
+$('btnBackFromView').addEventListener('click', ()=>{
+  $('viewCodeCard').classList.add('hidden');
+  $('modeSelectCard').classList.remove('hidden');
+});
+
+let authTab = 'signin';
+$('tabSignin').addEventListener('click', ()=>{
+  authTab='signin';
+  $('tabSignin').classList.add('active'); $('tabSignup').classList.remove('active');
+  $('authSubmit').textContent = '로그인';
+});
+$('tabSignup').addEventListener('click', ()=>{
+  authTab='signup';
+  $('tabSignup').classList.add('active'); $('tabSignin').classList.remove('active');
+  $('authSubmit').textContent = '회원가입';
+});
+
+$('authSubmit').addEventListener('click', async ()=>{
+  const email = $('authEmail').value.trim();
+  const password = $('authPassword').value;
+  const status = $('authStatus');
+  const joinFlow = state.authFlow === 'join';
+  const inviteCode = $('joinInviteCode').value.trim();
+  if(!email || !password){ status.textContent='이메일/비밀번호를 입력해주세요.'; status.className='auth-status error'; return; }
+  if(joinFlow && !inviteCode){ status.textContent='초대 코드를 입력해주세요.'; status.className='auth-status error'; return; }
+  $('authSubmit').disabled = true;
+  status.textContent = '처리 중...'; status.className='auth-status';
+  try{
+    if(authTab==='signin'){
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      if(error) throw error;
+      if(joinFlow){
+        const { error: jErr } = await sb.rpc('join_board_by_invite_code', { p_code: inviteCode });
+        if(jErr) throw jErr;
+      }
+      await loadMemberBoard();
+    } else {
+      const { error } = await sb.auth.signUp({ email, password });
+      if(error) throw error;
+      status.textContent = joinFlow
+        ? '가입 완료! 이메일 확인이 필요할 수 있어요. 로그인 후 같은 초대 코드로 다시 로그인해주세요.'
+        : '가입 완료! 이메일 확인이 필요할 수 있어요. 로그인해주세요.';
+      status.className='auth-status ok';
+    }
+  }catch(err){
+    status.textContent = err.message;
+    status.className='auth-status error';
+  }
+  $('authSubmit').disabled = false;
+});
+
+$('btnViewSubmit').addEventListener('click', async ()=>{
+  const code = $('viewCodeInput').value.trim();
+  const status = $('viewStatus');
+  if(!code){ status.textContent='코드를 입력해주세요.'; status.className='auth-status error'; return; }
+  $('btnViewSubmit').disabled = true;
+  status.textContent = '조회 중...'; status.className='auth-status';
+  try{
+    await loadViewerBoard(code);
+  }catch(err){
+    status.textContent = err.message;
+    status.className='auth-status error';
+  }
+  $('btnViewSubmit').disabled = false;
+});
+
+$('btnSignOut').addEventListener('click', async ()=>{
+  await sb.auth.signOut();
+  location.reload();
+});
+
+$('btnCopyLink').addEventListener('click', ()=>{
+  const url = `${location.origin}${location.pathname}?code=${state.shareCode}`;
+  navigator.clipboard.writeText(url);
+  $('btnCopyLink').textContent = '복사됨!';
+  setTimeout(()=>{ $('btnCopyLink').textContent = '보기 링크 복사'; }, 1500);
+});
+
+// ====== 그룹(구성원) 관리 패널 ======
+$('btnOpenGroup').addEventListener('click', openGroupPanel);
+$('btnOpenGroupEditor').addEventListener('click', openGroupPanel);
+
+function openGroupPanel(){
+  state.ui.view = 'group';
+  renderPanel();
+  openPanel();
+  loadGroupMembers();
+}
+
+async function loadGroupMembers(){
+  const { data, error } = await sb.rpc('get_board_members', { p_board_id: state.boardId });
+  if(error){ console.error('members load error', error); state.members = []; }
+  else state.members = data || [];
+  if(state.ui.view === 'group') renderPanel();
+}
+
+function renderGroupPanel(){
+  const isOwner = state.role === 'owner';
+  const joinUrl = `${location.origin}${location.pathname}?join=${state.inviteCode || ''}`;
+  const membersHtml = state.members.map(m=>{
+    const mine = m.user_id === state.myUserId;
+    return `
+      <li class="member-row">
+        <span class="member-email">${escapeHtml(m.email)}${mine ? ' (나)' : ''}</span>
+        <span style="display:flex; align-items:center;">
+          <span class="role-chip ${m.role}">${m.role === 'owner' ? '소유자' : '편집자'}</span>
+          ${(isOwner && m.role !== 'owner') ? `<button class="member-kick" data-uid="${m.user_id}">내보내기</button>` : ''}
+        </span>
+      </li>`;
+  }).join('');
+
+  const inviteBoxHtml = isOwner ? `
+    <div class="group-invite-box">
+      <span>초대 코드: <b id="groupInviteCodeText">${escapeHtml(state.inviteCode || '')}</b></span>
+      <div class="grp-btns">
+        <button id="btnCopyInvite">초대 링크 복사</button>
+        <button class="ghost" id="btnRegenInvite">재발급</button>
+      </div>
+    </div>` : '';
+
+  const leaveHtml = !isOwner ? `<button class="group-leave-btn" id="btnLeaveGroup">그룹 나가기</button>` : '';
+
+  document.getElementById('panelBody').innerHTML = `
+    <div class="group-panel">
+      <h2>👥 그룹 구성원</h2>
+      ${inviteBoxHtml}
+      <ul class="member-list">${membersHtml || '<li class="member-row">불러오는 중...</li>'}</ul>
+      ${leaveHtml}
+      <div class="group-status" id="groupStatus"></div>
+    </div>`;
+
+  if(isOwner){
+    document.getElementById('btnCopyInvite').addEventListener('click', ()=>{
+      navigator.clipboard.writeText(joinUrl);
+      const st = document.getElementById('groupStatus');
+      st.textContent = '초대 링크가 복사됐어요.'; st.className='group-status ok';
+    });
+    document.getElementById('btnRegenInvite').addEventListener('click', async ()=>{
+      const newCode = randCode();
+      const { error } = await sb.from('boards').update({ invite_code:newCode }).eq('id', state.boardId);
+      const st = document.getElementById('groupStatus');
+      if(error){ st.textContent = '재발급 실패: '+error.message; st.className='group-status error'; return; }
+      state.inviteCode = newCode;
+      st.textContent = '새 초대 코드가 발급됐어요. (이전 코드는 무효화됨)'; st.className='group-status ok';
+      renderGroupPanel();
+    });
+    document.querySelectorAll('.member-kick').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const uid = btn.dataset.uid;
+        if(!confirm('이 구성원을 그룹에서 내보낼까요?')) return;
+        const { error } = await sb.from('board_members').delete().eq('board_id', state.boardId).eq('user_id', uid);
+        if(error){ alert('내보내기 실패: '+error.message); return; }
+        await loadGroupMembers();
+      });
+    });
+  } else {
+    const leaveBtn = document.getElementById('btnLeaveGroup');
+    if(leaveBtn) leaveBtn.addEventListener('click', async ()=>{
+      if(!confirm('이 그룹에서 나갈까요? 더 이상 이 일정표를 편집할 수 없어요.')) return;
+      const { data:{ user } } = await sb.auth.getUser();
+      const { error } = await sb.from('board_members').delete().eq('board_id', state.boardId).eq('user_id', user.id);
+      if(error){ alert('나가기 실패: '+error.message); return; }
+      location.reload();
+    });
+  }
+}
+
+// ---- 부팅: URL에 ?join=가 있으면 초대 코드 참여 화면으로, ?code=가 있으면 뷰어로 바로 진입 ----
+async function boot(){
+  const params = new URLSearchParams(location.search);
+  const urlJoin = params.get('join');
+  if(urlJoin){
+    const { data:{ session } } = await sb.auth.getSession();
+    if(session){
+      try{
+        const { error } = await sb.rpc('join_board_by_invite_code', { p_code: urlJoin });
+        if(error) throw error;
+        await loadMemberBoard();
+        return;
+      }catch(err){ /* 코드가 잘못됐으면 그냥 모드 선택 화면으로 진행 */ }
+    } else {
+      showLoginCard('join');
+      $('joinInviteCode').value = urlJoin;
+      return;
+    }
+  }
+  const urlCode = params.get('code');
+  if(urlCode){
+    try{ await loadViewerBoard(urlCode); return; }
+    catch(err){ /* 코드가 잘못됐으면 그냥 모드 선택 화면으로 진행 */ }
+  }
+  const { data:{ session } } = await sb.auth.getSession();
+  if(session){ await loadMemberBoard(); }
+  // session 없으면 authGate의 모드 선택 화면이 기본으로 보임 (아무것도 안 해도 됨)
+}
+boot();
+
+function renderCalendar(){
+  const y = state.cursor.getFullYear(), m = state.cursor.getMonth();
+  document.getElementById('calTitle').textContent = `${y}년 ${m+1}월`;
+  const first = new Date(y,m,1);
+  const startDow = first.getDay();
+  const daysInMonth = new Date(y,m+1,0).getDate();
+  const grid = document.getElementById('grid');
+  grid.innerHTML='';
+  for(let i=0;i<startDow;i++){
+    const c = document.createElement('div');
+    c.className='day-cell empty';
+    grid.appendChild(c);
+  }
+  for(let d=1; d<=daysInMonth; d++){
+    const key = dstr(y,m,d);
+    const isToday = key === todayStr();
+    const evs = state.events[key] || [];
+    const cell = document.createElement('div');
+    cell.className = 'day-cell'+(isToday?' today':'');
+    cell.dataset.date = key;
+    let pinsHtml = '';
+    if(evs.length){
+      const hasPhoto = evs.some(e=>e.photos.length);
+      const hasCheck = evs.some(e=>e.checklist.length);
+      const hasDoc = evs.some(e=>e.docs.length);
+      pinsHtml = '<div class="pins">'+
+        (hasPhoto?'<span class="pin photo"></span>':'')+
+        (hasCheck?'<span class="pin check"></span>':'')+
+        (hasDoc?'<span class="pin doc"></span>':'')+
+        '</div>';
+    }
+    let evHtml = '';
+    if(evs.length){
+      evHtml = `<div class="ev-title">${escapeHtml(evs[0].title)}</div>`;
+      if(evs.length>1) evHtml += `<div class="ev-more">+${evs.length-1}개 더보기</div>`;
+    }
+    cell.innerHTML = `<div class="day-num">${d}</div>${pinsHtml}${evHtml}`;
+    cell.addEventListener('click', ()=> openDay(key));
+    grid.appendChild(cell);
+  }
+}
+
+function escapeHtml(s){ const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+
+function openDay(dateKey){
+  state.ui.date = dateKey;
+  const evs = state.events[dateKey] || [];
+  if(evs.length === 0){ state.ui.view='empty'; }
+  else if(evs.length === 1){ state.ui.view='detail'; state.ui.eventId = evs[0].id; }
+  else { state.ui.view='list'; }
+  renderPanel();
+  openPanel();
+}
+
+function openPanel(){
+  document.getElementById('panel').classList.add('open');
+  document.getElementById('overlay').classList.add('open');
+}
+function closePanel(){
+  document.getElementById('panel').classList.remove('open');
+  document.getElementById('overlay').classList.remove('open');
+}
+
+function fmtDateLabel(key){
+  const [y,m,d] = key.split('-').map(Number);
+  const wd = ['일','월','화','수','목','금','토'][new Date(y,m-1,d).getDay()];
+  return `${y}.${String(m).padStart(2,'0')}.${String(d).padStart(2,'0')} (${wd})`;
+}
+
+function renderPanel(){
+  const body = document.getElementById('panelBody');
+
+  if(state.ui.view === 'group'){
+    renderGroupPanel();
+    return;
+  }
+
+  const dateKey = state.ui.date;
+  const evs = state.events[dateKey] || [];
+
+  if(state.ui.view === 'list'){
+    body.innerHTML = `
+      <div class="panel-date">${fmtDateLabel(dateKey)}</div>
+      <div class="panel-heading">이 날의 일정</div>
+      ${evs.map(e=>`
+        <div class="event-list-item" data-id="${e.id}">
+          <div class="t">${escapeHtml(e.title)}</div>
+          <div class="m">${e.time||''} · ${escapeHtml(e.location||'')}</div>
+        </div>`).join('')}
+      ${state.readOnly ? '' : '<button class="add-card-btn" id="btnAddMore">+ 이 날짜에 일정 더 추가하기</button>'}
+    `;
+    body.querySelectorAll('.event-list-item').forEach(el=>{
+      el.addEventListener('click', ()=>{ state.ui.eventId = el.dataset.id; state.ui.view='detail'; renderPanel(); });
+    });
+    if(!state.readOnly) document.getElementById('btnAddMore').addEventListener('click', focusPromptForDate);
+    return;
+  }
+
+  if(state.ui.view === 'empty'){
+    body.innerHTML = state.readOnly ? `
+      <div class="panel-date">${fmtDateLabel(dateKey)}</div>
+      <div class="panel-heading">등록된 일정이 없어요</div>
+    ` : `
+      <div class="panel-date">${fmtDateLabel(dateKey)}</div>
+      <div class="panel-heading">등록된 일정이 없어요</div>
+      <p class="empty-hint" style="margin-bottom:14px;">날짜를 직접 선택하지 않아도 돼요. 위쪽 프롬프트 입력창에 자유롭게 일정을 설명하면 AI가 날짜를 읽어서 이 캘린더에 자동으로 배치해줘요.</p>
+      <button class="add-card-btn" id="btnGoPrompt">프롬프트 입력창으로 이동</button>
+    `;
+    if(!state.readOnly) document.getElementById('btnGoPrompt').addEventListener('click', focusPromptForDate);
+    return;
+  }
+
+  if(state.ui.view === 'detail'){
+    const ev = evs.find(e=>e.id===state.ui.eventId);
+    if(!ev){ state.ui.view='list'; renderPanel(); return; }
+    body.innerHTML = `
+      <div class="panel-date">${fmtDateLabel(dateKey)}</div>
+      ${evs.length>1?'<button class="back-link" id="btnBack">← 이 날의 다른 일정 보기</button>':''}
+      <div class="panel-heading">${escapeHtml(ev.title)}</div>
+      <div class="detail-meta">${ev.time?ev.time+' · ':''}${escapeHtml(ev.location||'')}</div>
+      ${ev.memo?`<div class="detail-memo">${escapeHtml(ev.memo)}</div>`:''}
+
+      <div class="section-label"><span class="dot" style="background:var(--teal)"></span>사진</div>
+      <div class="photo-row" id="photoRow"></div>
+      ${state.readOnly ? '' : '<button class="add-card-btn" id="btnAddPhoto">+ 사진 추가</button>'}
+
+      <div class="section-label"><span class="dot" style="background:var(--ochre)"></span>준비물 체크리스트</div>
+      <div class="checklist" id="checklist"></div>
+      ${state.readOnly ? '' : `
+      <div class="add-row">
+        <input id="checkInput" placeholder="예: 삼각대 챙기기">
+        <button id="btnAddCheck">추가</button>
+      </div>`}
+
+      <div class="section-label"><span class="dot" style="background:var(--rust)"></span>안내자료</div>
+      <div id="docRow"></div>
+      ${state.readOnly ? '' : '<button class="add-card-btn" id="btnAddDoc">+ 자료 추가</button>'}
+    `;
+    if(evs.length>1) document.getElementById('btnBack').addEventListener('click', ()=>{ state.ui.view='list'; renderPanel(); });
+
+    renderPhotos(ev);
+    renderChecklist(ev);
+    renderDocs(ev);
+
+    if(state.readOnly) return;
+
+    document.getElementById('btnAddPhoto').addEventListener('click', ()=>{
+      const input = document.getElementById('photoInput');
+      input.onchange = (e)=>{
+        [...e.target.files].forEach(file=>{
+          const reader = new FileReader();
+          reader.onload = async ()=>{
+            ev.photos.push({id:newId(), dataUrl:reader.result, tag:null, suggestion:null});
+            renderPhotos(ev);
+            renderCalendar();
+            await dbUpdateEvent(ev, { photos: ev.photos });
+          };
+          reader.readAsDataURL(file);
+        });
+        input.value = '';
+      };
+      input.click();
+    });
+
+    document.getElementById('btnAddCheck').addEventListener('click', async ()=>{
+      const inp = document.getElementById('checkInput');
+      const txt = inp.value.trim();
+      if(!txt) return;
+      ev.checklist.push({id:newId(), text:txt, done:false});
+      inp.value='';
+      renderChecklist(ev);
+      renderCalendar();
+      await dbUpdateEvent(ev, { checklist: ev.checklist });
+    });
+    document.getElementById('checkInput').addEventListener('keydown', (e)=>{
+      if(e.key==='Enter') document.getElementById('btnAddCheck').click();
+    });
+
+    document.getElementById('btnAddDoc').addEventListener('click', ()=>{
+      const input = document.getElementById('docInput');
+      input.onchange = (e)=>{
+        [...e.target.files].forEach(file=>{
+          ev.docs.push({id:newId(), name:file.name});
+        });
+        renderDocs(ev);
+        renderCalendar();
+        input.value='';
+        dbUpdateEvent(ev, { docs: ev.docs });
+      };
+      input.click();
+    });
+  }
+}
+
+function renderPhotos(ev){
+  const row = document.getElementById('photoRow');
+  if(!ev.photos.length){
+    row.innerHTML = `<span class="empty-hint">아직 첨부된 사진이 없어요.</span>`;
+    return;
+  }
+  row.innerHTML = ev.photos.map(p=>`
+    <div class="polaroid" data-id="${p.id}">
+      <div class="tape"></div>
+      <img src="${p.dataUrl}">
+      ${p.tag ? `<span class="tag-chip tag-${p.tag}">${p.tag}</span>` : (state.readOnly ? '' : `<button class="classify-btn" data-photo="${p.id}">AI로 분류</button>`)}
+      ${(p.suggestion && !state.readOnly) ? `<button class="suggestion-chip" data-suggest="${p.id}">+ 체크리스트: ${escapeHtml(p.suggestion)}</button>` : ''}
+    </div>
+  `).join('');
+  if(state.readOnly) return;
+  row.querySelectorAll('.classify-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=> classifyPhoto(ev, btn.dataset.photo, btn));
+  });
+  row.querySelectorAll('.suggestion-chip').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const p = ev.photos.find(x=>x.id===btn.dataset.suggest);
+      if(p && p.suggestion){
+        ev.checklist.push({id:newId(), text:p.suggestion, done:false});
+        p.suggestion = null;
+        renderChecklist(ev);
+        renderPhotos(ev);
+        renderCalendar();
+        await dbUpdateEvent(ev, { checklist: ev.checklist, photos: ev.photos });
+      }
+    });
+  });
+}
+
+function renderChecklist(ev){
+  const wrap = document.getElementById('checklist');
+  if(!ev.checklist.length){
+    wrap.innerHTML = `<div class="empty-hint" style="padding:8px 0;">아직 준비물이 없어요.</div>`;
+    return;
+  }
+  wrap.innerHTML = ev.checklist.map(c=>`
+    <div class="check-item ${c.done?'done':''}" data-id="${c.id}">
+      <input type="checkbox" ${c.done?'checked':''} ${state.readOnly?'disabled':''}>
+      <span>${escapeHtml(c.text)}</span>
+    </div>
+  `).join('');
+  if(state.readOnly) return;
+  wrap.querySelectorAll('.check-item').forEach(el=>{
+    el.querySelector('input').addEventListener('change', async (e)=>{
+      const c = ev.checklist.find(x=>x.id===el.dataset.id);
+      c.done = e.target.checked;
+      renderChecklist(ev);
+      await dbUpdateEvent(ev, { checklist: ev.checklist });
+    });
+  });
+}
+
+function renderDocs(ev){
+  const wrap = document.getElementById('docRow');
+  if(!ev.docs.length){
+    wrap.innerHTML = `<span class="empty-hint">아직 첨부된 자료가 없어요.</span>`;
+    return;
+  }
+  wrap.innerHTML = ev.docs.map(d=>`<span class="doc-chip">📎 ${escapeHtml(d.name)}</span>`).join('');
+}
+
+async function classifyPhoto(ev, photoId, btnEl){
+  const p = ev.photos.find(x=>x.id===photoId);
+  if(!p) return;
+  btnEl.textContent = '분류 중...';
+  btnEl.disabled = true;
+  try{
+    const match = p.dataUrl.match(/^data:(.+);base64,(.*)$/);
+    const mediaType = match[1];
+    const base64Data = match[2];
+    const prompt = `이 사진은 어떤 일정을 준비하는 과정에서 첨부된 이미지입니다.
+아래 카테고리 중 하나로 분류하고, 이 사진과 관련해 챙기면 좋을 준비물이나 확인사항을 한 가지 짧게 제안해주세요.
+카테고리: 장소, 준비물, 안내자료, 기타
+반드시 아래 JSON 형식으로만 답하세요. 다른 설명은 절대 포함하지 마세요.
+{"category": "장소|준비물|안내자료|기타", "suggestion": "짧은 제안 한 줄"}`;
+
+    const response = await fetch("/api/claude", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1000,
+        messages: [{
+          role: "user",
+          content: [
+            { type: "image", source: { type: "base64", media_type: mediaType, data: base64Data } },
+            { type: "text", text: prompt }
+          ]
+        }]
+      })
+    });
+    const data = await response.json();
+    const text = data.content.map(b=>b.text||'').join('').replace(/```json|```/g,'').trim();
+    const parsed = JSON.parse(text);
+    p.tag = parsed.category || '기타';
+    p.suggestion = parsed.suggestion || null;
+  }catch(err){
+    console.error('classify error', err);
+    p.tag = '기타';
+  }
+  renderPhotos(ev);
+  renderCalendar();
+  await dbUpdateEvent(ev, { photos: ev.photos });
+}
+
+let pendingPhotos = [];
+let pendingDocs = [];
+
+function renderPending(){
+  const row = document.getElementById('pendingRow');
+  const photoChips = pendingPhotos.map(p=>`
+    <span class="pending-chip" data-kind="photo" data-id="${p.id}">
+      <img src="${p.dataUrl}"><button data-remove="photo:${p.id}">✕</button>
+    </span>`).join('');
+  const docChips = pendingDocs.map(d=>`
+    <span class="pending-chip" data-kind="doc" data-id="${d.id}">
+      <span class="pending-doc-icon">📎</span>${escapeHtml(d.name)}<button data-remove="doc:${d.id}">✕</button>
+    </span>`).join('');
+  row.innerHTML = photoChips + docChips;
+  row.querySelectorAll('[data-remove]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const [kind,id] = btn.dataset.remove.split(':');
+      if(kind==='photo') pendingPhotos = pendingPhotos.filter(p=>p.id!==id);
+      else pendingDocs = pendingDocs.filter(d=>d.id!==id);
+      renderPending();
+    });
+  });
+}
+
+document.getElementById('btnAttachPhoto').addEventListener('click', ()=>{
+  const input = document.getElementById('photoInput');
+  input.onchange = (e)=>{
+    [...e.target.files].forEach(file=>{
+      const reader = new FileReader();
+      reader.onload = ()=>{
+        pendingPhotos.push({id:newId(), dataUrl:reader.result});
+        renderPending();
+      };
+      reader.readAsDataURL(file);
+    });
+    input.value = '';
+  };
+  input.click();
+});
+
+document.getElementById('btnAttachDoc').addEventListener('click', ()=>{
+  const input = document.getElementById('docInput');
+  input.onchange = (e)=>{
+    [...e.target.files].forEach(file=>{
+      pendingDocs.push({id:newId(), name:file.name});
+    });
+    renderPending();
+    input.value = '';
+  };
+  input.click();
+});
+
+function focusPromptForDate(){
+  closePanel();
+  const ta = document.getElementById('promptInput');
+  ta.focus();
+  ta.scrollIntoView({behavior:'smooth', block:'center'});
+}
+
+async function generateFromPrompt(){
+  const ta = document.getElementById('promptInput');
+  const btn = document.getElementById('btnGenerate');
+  const status = document.getElementById('promptStatus');
+  const text = ta.value.trim();
+  if(!text){ ta.focus(); return; }
+
+  btn.disabled = true;
+  btn.textContent = '일정 만드는 중...';
+  status.textContent = '';
+  status.className = 'prompt-status';
+
+  const todayIso = todayStr();
+  const prompt = `오늘 날짜는 ${todayIso} 입니다.
+사용자가 아래처럼 자유롭게 일정을 설명했습니다. 이 내용에서 하나 이상의 일정을 추출해서 아래 JSON 형식으로만 답하세요. 다른 설명, 인사말, 코드블록 표시(\`\`\`)는 절대 포함하지 말고 순수 JSON 텍스트만 출력하세요.
+
+사용자 입력:
+"""
+${text}
+"""
+
+각 일정에는 다음 정보를 포함하세요:
+- date: YYYY-MM-DD 형식 (상대적 날짜 표현은 오늘 날짜를 기준으로 계산)
+- title: 일정 제목 (짧고 명확하게)
+- time: HH:MM 형식 24시간제 시작 시간. 오전/오후가 명시되지 않았다면 문맥(학교 수업, 회사 업무 등은 보통 오전~오후 시간대)을 고려해 가장 자연스러운 시간으로 해석. 알 수 없으면 null
+- location: 장소, 알 수 없으면 빈 문자열
+- memo: 한두 문장의 간단한 메모 (예: 종료 시간이 언급되었다면 메모에 포함)
+- checklist: 이 일정에 필요한 준비물/확인사항 문자열 배열, 없으면 빈 배열
+
+형식:
+{"events":[{"date":"2026-07-10","title":"...","time":"14:00","location":"...","memo":"...","checklist":["...","..."]}]}`;
+
+  let rawForDebug = '';
+  try{
+    const response = await fetch("/api/claude", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1000,
+        messages: [{ role:"user", content: prompt }]
+      })
+    });
+
+    const data = await response.json();
+
+    if(!response.ok || data.error){
+      const msg = (data.error && data.error.message) ? data.error.message : `요청 실패 (status ${response.status})`;
+      throw new Error('API 오류: ' + msg);
+    }
+    if(!data.content || !Array.isArray(data.content)){
+      throw new Error('AI 응답에 content가 없어요. 응답: ' + JSON.stringify(data).slice(0,200));
+    }
+
+    const raw = data.content.map(b=>b.text||'').join('').replace(/```json|```/g,'').trim();
+    rawForDebug = raw;
+
+    let parsed;
+    try{
+      parsed = JSON.parse(raw);
+    }catch(parseErr){
+      const match = raw.match(/\{[\s\S]*\}/);
+      if(match){
+        parsed = JSON.parse(match[0]);
+      } else {
+        throw new Error('AI가 JSON이 아닌 답을 줬어요: ' + raw.slice(0,150));
+      }
+    }
+
+    const events = parsed.events || [];
+    if(!events.length){
+      status.textContent = '일정을 찾지 못했어요. 조금 더 구체적으로 적어주세요.';
+      status.className = 'prompt-status error';
+    } else {
+      let firstDate = null;
+      for(const e of events){
+        if(!e.date) continue;
+        const ev = {
+          id:newId(),
+          title:e.title || '제목 없는 일정',
+          time:e.time || '',
+          location:e.location || '',
+          memo:e.memo || '',
+          photos:pendingPhotos.map(p=>({id:newId(), dataUrl:p.dataUrl, tag:null, suggestion:null})),
+          checklist:(e.checklist||[]).map(t=>({id:newId(), text:t, done:false})),
+          docs:pendingDocs.map(d=>({id:newId(), name:d.name}))
+        };
+        if(!state.events[e.date]) state.events[e.date] = [];
+        state.events[e.date].push(ev);
+        await dbInsertEvent(e.date, ev);
+        if(!firstDate) firstDate = e.date;
+      }
+      status.textContent = `${events.length}개의 일정을 캘린더에 등록했어요.`;
+      status.className = 'prompt-status ok';
+      ta.value = '';
+      pendingPhotos = [];
+      pendingDocs = [];
+      renderPending();
+      if(firstDate){
+        const [fy,fm] = firstDate.split('-').map(Number);
+        state.cursor = new Date(fy, fm-1, 1);
+      }
+      renderCalendar();
+      if(firstDate) openDay(firstDate);
+    }
+  }catch(err){
+    console.error('generate error:', err, '\nraw model output:', rawForDebug);
+    status.textContent = err.message || '일정을 만드는 중 문제가 생겼어요. 다시 시도해주세요.';
+    status.className = 'prompt-status error';
+  }
+  btn.disabled = false;
+  btn.textContent = 'AI로 일정 만들기';
+}
+
+document.getElementById('btnGenerate').addEventListener('click', generateFromPrompt);
+
+document.getElementById('btnPrev').addEventListener('click', ()=>{
+  state.cursor.setMonth(state.cursor.getMonth()-1);
+  renderCalendar();
+});
+document.getElementById('btnNext').addEventListener('click', ()=>{
+  state.cursor.setMonth(state.cursor.getMonth()+1);
+  renderCalendar();
+});
+document.getElementById('btnToday').addEventListener('click', ()=>{
+  state.cursor = new Date();
+  renderCalendar();
+});
+document.getElementById('panelClose').addEventListener('click', closePanel);
+document.getElementById('overlay').addEventListener('click', closePanel);
+
+</script>
+</body>
+</html>
