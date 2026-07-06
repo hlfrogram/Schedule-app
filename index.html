@@ -205,6 +205,8 @@
     color:var(--ink-soft);
     letter-spacing:0.06em;
   }
+  .weekdays div:first-child{ color:#d13b3b; } /* 일요일 빨강 */
+  .weekdays div:last-child{ color:#2b62d6; }  /* 토요일 파랑 */
   .grid{
     display:grid;
     grid-template-columns:repeat(7,1fr);
@@ -213,10 +215,7 @@
   .day-cell{
     position:relative;
     aspect-ratio:1/0.85;
-    background:
-      repeating-linear-gradient(var(--paper-line) 0 1px, transparent 1px 100%),
-      var(--white-note);
-    background-size:100% 11px;
+    background:var(--white-note);
     border:1px solid var(--paper-edge);
     border-radius:6px;
     padding:4px 5px;
