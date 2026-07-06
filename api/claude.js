@@ -4,7 +4,7 @@
 // 응답을 다시 프론트엔드가 이해하는 형식으로 되돌려줍니다.
 // 키는 서버 환경변수 GEMINI_API_KEY 로만 사용 — 절대 프론트 코드에 넣지 마세요.
 
-const GEMINI_MODEL = 'gemini-2.5-flash'; // 무료 티어 지원 모델 
+const GEMINI_MODEL = 'gemini-2.5-flash'; // 무료 티어 지원 모델
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -55,7 +55,10 @@ export default async function handler(req, res) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents,
-        generationConfig: { maxOutputTokens: max_tokens || 1000 },
+        generationConfig: {
+          maxOutputTokens: Math.max(max_tokens || 1000, 2048),
+          thinkingConfig: { thinkingBudget: 0 },
+        },
       }),
     });
 
@@ -81,6 +84,6 @@ export default async function handler(req, res) {
     return res.status(200).json({ content: [{ type: 'text', text }] });
   } catch (err) {
     console.error('gemini proxy error:', err);
-    return res.status(500).json({ error: { message: '서버 오류: ' + err.message } });
+    return res.status(200).json({ error: { message: '서버 오류: ' + err.message } });
   }
 }
