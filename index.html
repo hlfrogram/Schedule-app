@@ -511,6 +511,18 @@
   }
   .hidden{display:none !important;}
 
+  .lightbox{
+    position:fixed; inset:0; z-index:50;
+    background:rgba(10,12,20,0.85);
+    display:flex; align-items:center; justify-content:center;
+    padding:24px; cursor:zoom-out;
+  }
+  .lightbox img{
+    max-width:96vw; max-height:92vh;
+    border-radius:8px; background:#fff;
+    box-shadow:0 10px 40px rgba(0,0,0,0.5);
+  }
+
   .share-box{
     display:flex; align-items:center; justify-content:space-between;
     background:var(--teal-soft); border:1px solid var(--teal);
@@ -716,6 +728,10 @@
 <div class="panel" id="panel">
   <button class="panel-close" id="panelClose">✕</button>
   <div id="panelBody"></div>
+</div>
+
+<div class="lightbox hidden" id="lightbox">
+  <img id="lightboxImg" src="" alt="첨부 사진 원본">
 </div>
 
 <input type="file" id="photoInput" class="hidden-input" accept="image/*" multiple>
@@ -1260,6 +1276,14 @@ function closePanel(){
   document.getElementById('panel').classList.remove('open');
   document.getElementById('overlay').classList.remove('open');
 }
+function openLightbox(src){
+  document.getElementById('lightboxImg').src = src;
+  document.getElementById('lightbox').classList.remove('hidden');
+}
+document.getElementById('lightbox').addEventListener('click', ()=>{
+  document.getElementById('lightbox').classList.add('hidden');
+  document.getElementById('lightboxImg').src = '';
+});
 
 function fmtDateLabel(key){
   const [y,m,d] = key.split('-').map(Number);
@@ -1430,6 +1454,10 @@ function renderPhotos(ev){
       ${(p.suggestion && !state.readOnly) ? `<button class="suggestion-chip" data-suggest="${p.id}">+ 체크리스트: ${escapeHtml(p.suggestion)}</button>` : ''}
     </div>
   `).join('');
+  row.querySelectorAll('.polaroid img').forEach(img=>{
+    img.style.cursor = 'zoom-in';
+    img.addEventListener('click', ()=> openLightbox(img.src));
+  });
   if(state.readOnly) return;
   row.querySelectorAll('.classify-btn').forEach(btn=>{
     btn.addEventListener('click', ()=> classifyPhoto(ev, btn.dataset.photo, btn));
