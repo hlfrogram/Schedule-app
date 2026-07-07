@@ -11,7 +11,7 @@
   :root{
     --board:#33413A;
     --board-dark:#26302B;
-    --paper:#ECE3CE;
+    --paper:#DCE3CE;
     --paper-edge:#CDBD93;
     --paper-line:#DED0AC;
     --ink:#24303A;
@@ -267,7 +267,7 @@
   .ev-dot{
     flex:0 0 auto;
     width:6px; height:6px; border-radius:50%;
-    background:var(--rust);
+    background:#2b62d6;
     box-shadow:0 1px 1px var(--shadow);
   }
 
@@ -600,6 +600,16 @@
   }
   .delete-event-btn:hover{ background:var(--rust); color:#fff; }
 
+  .board-switch{
+    display:flex; align-items:center; gap:8px;
+    margin-bottom:12px; font-size:12px; color:var(--ink-soft);
+  }
+  .board-switch select{
+    flex:1; font-family:'Inter',sans-serif; font-size:12.5px;
+    padding:6px 8px; border:1px solid var(--paper-edge);
+    border-radius:7px; background:var(--white-note); color:var(--ink);
+  }
+
   /* 모바일 대응 */
   @media (max-width:480px){
     #app{ padding:14px 10px 32px; }
@@ -671,6 +681,10 @@
       <button id="btnOpenGroupEditor">👥 그룹</button>
     </div>
     <div class="viewonly-badge hidden" id="viewOnlyBadge">👀 읽기 전용으로 보고 있어요 (편집 불가)</div>
+    <div class="board-switch hidden" id="boardSwitchWrap">
+      <span>일정표:</span>
+      <select id="boardSwitch"></select>
+    </div>
     <p class="subtitle">일정에 사진, 준비물, 안내자료를 핀으로 꽂아두듯 함께 정리하세요.</p>
 
     <div class="cal-header">
@@ -733,7 +747,8 @@ const state = {
   members: [],
   myUserId: null,
   authFlow: 'create', // 'create' | 'join' — 로그인 버튼을 눌렀을 때 목적
-  editTarget: null // {date, id, title} — 선택된 일정 (있으면 프롬프트가 수정, 없으면 새로 추가)
+  editTarget: null, // {date, id, title} — 선택된 일정 (있으면 프롬프트가 수정, 없으면 새로 추가)
+  myBoards: [] // 내가 속한 일정표 목록 {board_id, role, board}
 };
 const newId = ()=> 'id'+Math.random().toString(36).slice(2,9);
 const randCode = ()=> Math.random().toString(36).slice(2,10);
@@ -747,6 +762,16 @@ function sortEventsByTime(evs){
   const key = (ev)=> (ev.time && /^\d{1,2}:\d{2}$/.test(ev.time)) ? ev.time.padStart(5,'0') : '99:99';
   evs.sort((a,b)=> key(a).localeCompare(key(b)));
   return evs;
+}
+
+// 일정 개수가 많을수록 날짜 칸 배경을 점점 진한 빨강으로
+function dayBgColor(n){
+  if(!n) return 'var(--white-note)';
+  const t = Math.min(0.15 + (n-1)*0.18, 0.6);
+  const r = Math.round(255 + (209-255)*t);
+  const g = Math.round(253 + (59-253)*t);
+  const b = Math.round(247 + (59-247)*t);
+  return 'rgb(' + r + ',' + g + ',' + b + ')';
 }
 
 function eventsToStateMap(rows){
@@ -771,25 +796,37 @@ function enterApp(){
   document.getElementById('editorBadge').classList.toggle('hidden', state.role !== 'editor');
   document.getElementById('userBar').classList.toggle('hidden', state.mode !== 'member');
   if(state.role === 'owner') document.getElementById('shareCodeText').textContent = state.shareCode;
+  renderBoardSwitch();
   renderCalendar();
 }
 
-// ---- 구성원(owner/editor) 흐름: 로그인 -> 내가 속한 board 조회, 없으면 새로 생성 -> events 로드 ----
-async function loadMemberBoard(){
+function renderBoardSwitch(){
+  const wrap = document.getElementById('boardSwitchWrap');
+  const sel = document.getElementById('boardSwitch');
+  if(!wrap || !sel) return;
+  if(!state.myBoards || state.myBoards.length < 2){ wrap.classList.add('hidden'); return; }
+  wrap.classList.remove('hidden');
+  sel.innerHTML = state.myBoards.map(m=>{
+    const label = m.role === 'owner' ? '내 일정표' : ('공유 일정표 (코드 ' + (m.board.share_code||'') + ')');
+    const selected = m.board_id === state.boardId ? 'selected' : '';
+    return `<option value="${m.board_id}" ${selected}>${escapeHtml(label)}</option>`;
+  }).join('');
+}
+
+// ---- 구성원(owner/editor) 흐름: 로그인 -> 내가 속한 board 목록 조회, 없으면 새로 생성 -> 하나 활성화 ----
+async function loadMemberBoard(preferBoardId){
   const { data:{ user } } = await sb.auth.getUser();
   document.getElementById('userEmail').textContent = user.email;
   state.myUserId = user.id;
 
-  // 이 사용자가 owner 또는 editor로 속해있는 board를 찾는다 (RLS: is_board_member)
+  // 이 사용자가 owner 또는 editor로 속해있는 board 전부 (RLS: is_board_member)
   let { data: memberships, error } = await sb
     .from('board_members')
     .select('role, board_id, boards(*)')
     .eq('user_id', user.id)
-    .order('created_at', { ascending:true })
-    .limit(1);
+    .order('created_at', { ascending:true });
   if(error){ alert('보드 조회 오류: '+error.message); return; }
 
-  let board, role;
   if(!memberships || memberships.length===0){
     // 아직 어디에도 속해있지 않으면 새 board를 owner로 생성
     const code = randCode();
@@ -798,26 +835,41 @@ async function loadMemberBoard(){
       .insert({ owner_id:user.id, title:'내 일정 핀보드', share_code:code, invite_code:invite })
       .select().single();
     if(cErr){ alert('보드 생성 오류: '+cErr.message); return; }
-    board = created; role = 'owner';
-
     const { error: mErr } = await sb.from('board_members')
-      .insert({ board_id: board.id, user_id: user.id, role: 'owner' });
+      .insert({ board_id: created.id, user_id: user.id, role: 'owner' });
     if(mErr){ alert('구성원 등록 오류: '+mErr.message); return; }
-  } else {
-    board = memberships[0].boards; role = memberships[0].role;
+    memberships = [{ role:'owner', board_id: created.id, boards: created }];
   }
 
-  state.mode = 'member';
-  state.role = role;
-  state.readOnly = false;
-  state.boardId = board.id;
-  state.shareCode = board.share_code;
-  state.inviteCode = board.invite_code;
+  state.myBoards = memberships.map(m=>({ board_id:m.board_id, role:m.role, board:m.boards }));
 
-  const { data: evRows, error: evErr } = await sb.from('events').select('*').eq('board_id', board.id);
+  let chosen = preferBoardId ? state.myBoards.find(b=>b.board_id===preferBoardId) : null;
+  if(!chosen) chosen = state.myBoards[0];
+  await activateBoard(chosen);
+}
+
+// 특정 일정표를 화면에 띄우기 (events 로드 후 앱 진입)
+async function activateBoard(m){
+  state.mode = 'member';
+  state.role = m.role;
+  state.readOnly = false;
+  state.boardId = m.board.id;
+  state.shareCode = m.board.share_code;
+  state.inviteCode = m.board.invite_code;
+  state.editTarget = null;
+
+  const { data: evRows, error: evErr } = await sb.from('events').select('*').eq('board_id', m.board.id);
   if(evErr){ alert('일정 조회 오류: '+evErr.message); return; }
   state.events = eventsToStateMap(evRows||[]);
   enterApp();
+}
+
+// 드롭다운으로 다른 일정표로 전환
+async function switchBoard(boardId){
+  const m = (state.myBoards||[]).find(b=>b.board_id===boardId);
+  if(!m) return;
+  closePanel();
+  await activateBoard(m);
 }
 
 // ---- 뷰어(읽기 전용) 흐름: 코드 입력 -> 서버 함수로 조회 ----
@@ -917,11 +969,14 @@ $('authSubmit').addEventListener('click', async ()=>{
     if(authTab==='signin'){
       const { error } = await sb.auth.signInWithPassword({ email, password });
       if(error) throw error;
+      let joinedBoardId;
       if(joinFlow){
         const { error: jErr } = await sb.rpc('join_board_by_invite_code', { p_code: inviteCode });
         if(jErr) throw jErr;
+        const { data: jb } = await sb.from('boards').select('id').eq('invite_code', inviteCode).single();
+        if(jb) joinedBoardId = jb.id;
       }
-      await loadMemberBoard();
+      await loadMemberBoard(joinedBoardId);
     } else {
       const { error } = await sb.auth.signUp({ email, password });
       if(error) throw error;
@@ -1063,7 +1118,8 @@ async function boot(){
       try{
         const { error } = await sb.rpc('join_board_by_invite_code', { p_code: urlJoin });
         if(error) throw error;
-        await loadMemberBoard();
+        const { data: jb } = await sb.from('boards').select('id').eq('invite_code', urlJoin).single();
+        await loadMemberBoard(jb ? jb.id : undefined);
         return;
       }catch(err){ /* 코드가 잘못됐으면 그냥 모드 선택 화면으로 진행 */ }
     } else {
@@ -1121,6 +1177,7 @@ function renderCalendar(){
       if(evs.length>1) evHtml += `<div class="ev-more">+${evs.length-1}개 더보기</div>`;
     }
     cell.innerHTML = `<div class="day-num">${d}</div>${pinsHtml}${evHtml}`;
+    cell.style.background = dayBgColor(evs.length);
     cell.addEventListener('click', ()=> openDay(key));
     grid.appendChild(cell);
   }
@@ -1600,7 +1657,7 @@ async function generateFromPrompt(){
   const btn = document.getElementById('btnGenerate');
   const status = document.getElementById('promptStatus');
   const text = ta.value.trim();
-  if(!text){ ta.focus(); return; }
+  if(!text && pendingPhotos.length === 0){ ta.focus(); return; }
   if(state.editTarget){ return editEventFromPrompt(text); }
 
   btn.disabled = true;
@@ -1617,6 +1674,8 @@ async function generateFromPrompt(){
 ${text}
 """
 
+첨부된 이미지가 있으면(수행평가지·가정통신문·안내문·시간표 등) 이미지 속 글자를 읽어 날짜·시간·장소·준비물·과제 내용을 파악하고, 제출/마감일이 있으면 그 날짜로 일정을 잡으세요.
+
 각 일정에는 다음 정보를 포함하세요:
 - date: YYYY-MM-DD 형식 (상대적 날짜 표현은 오늘 날짜를 기준으로 계산)
 - title: 일정 제목 (짧고 명확하게)
@@ -1628,6 +1687,12 @@ ${text}
 형식:
 {"events":[{"date":"2026-07-10","title":"...","time":"14:00","location":"...","memo":"...","checklist":["...","..."]}]}`;
 
+  const userContent = [{ type:'text', text: prompt }];
+  for(const p of pendingPhotos){
+    const mm = (p.dataUrl||'').match(/^data:(.+);base64,(.*)$/);
+    if(mm){ userContent.push({ type:'image', source:{ type:'base64', media_type: mm[1], data: mm[2] } }); }
+  }
+
   let rawForDebug = '';
   try{
     const response = await fetch("/api/claude", {
@@ -1635,8 +1700,8 @@ ${text}
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
-        max_tokens: 1000,
-        messages: [{ role:"user", content: prompt }]
+        max_tokens: 2000,
+        messages: [{ role:"user", content: userContent }]
       })
     });
 
@@ -1711,6 +1776,7 @@ ${text}
 }
 
 document.getElementById('btnGenerate').addEventListener('click', generateFromPrompt);
+document.getElementById('boardSwitch').addEventListener('change', (e)=> switchBoard(e.target.value));
 
 document.getElementById('btnPrev').addEventListener('click', ()=>{
   state.cursor.setMonth(state.cursor.getMonth()-1);
