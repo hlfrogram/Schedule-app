@@ -640,6 +640,23 @@
     border-radius:6px; padding:4px 9px; font-size:12px; cursor:pointer; margin-left:8px;
   }
 
+  .tabs{ display:flex; gap:4px; align-items:flex-end; }
+  .cover-tab{ cursor:pointer; }
+  .cover-tab.inactive{ background:rgba(255,255,255,0.10); box-shadow:none; }
+  .cover-tab.inactive h1{ color:rgba(255,255,255,0.6); }
+  .cover-tab.inactive .pin-dot{ opacity:0.4; }
+
+  .drive-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  .drive-header .dh-title{ font-family:'Fraunces',serif; font-size:18px; font-weight:600; }
+  .subjects-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); gap:10px; }
+  .subject-file{ background:var(--white-note); border:1px solid var(--paper-edge); border-radius:10px; padding:16px 8px; text-align:center; cursor:pointer; transition:transform .1s ease, box-shadow .1s ease; }
+  .subject-file:hover{ transform:translateY(-2px); box-shadow:0 4px 10px var(--shadow); }
+  .subject-file .sf-icon{ font-size:26px; }
+  .subject-file .sf-name{ margin-top:6px; font-size:13px; font-weight:500; word-break:break-all; }
+  .subject-file .sf-count{ font-size:10.5px; color:var(--ink-soft); margin-top:2px; }
+  .worksheet-row{ display:flex; flex-direction:column; gap:12px; }
+  .worksheet-item img{ width:100%; border-radius:8px; border:1px solid var(--paper-edge); cursor:zoom-in; display:block; }
+
   /* 모바일 대응 */
   @media (max-width:480px){
     #app{ padding:14px 10px 32px; }
@@ -678,7 +695,10 @@
 </div>
 
 <div id="app" class="hidden">
-  <div class="cover-tab"><span class="pin-dot"></span><h1>일정 핀보드</h1></div>
+  <div class="tabs">
+    <div class="cover-tab" id="tabCalendar"><span class="pin-dot"></span><h1>일정 핀보드</h1></div>
+    <div class="cover-tab inactive" id="tabDrive"><span class="pin-dot"></span><h1>파일 드라이브</h1></div>
+  </div>
   <div class="board-sheet">
     <div class="share-box hidden" id="shareBox">
       <span>공유 코드: <b id="shareCodeText"></b></span>
@@ -697,8 +717,9 @@
       <button id="btnJoinGroup">👥 그룹 참여</button>
       <button id="btnAddViewer">👁 공유코드 추가</button>
     </div>
-    <p class="subtitle">일정에 사진, 준비물, 안내자료를 핀으로 꽂아두듯 함께 정리하세요.</p>
+    <p class="subtitle" id="boardSubtitle">일정에 사진, 준비물, 안내자료를 핀으로 꽂아두듯 함께 정리하세요.</p>
 
+    <div id="calendarContent">
     <div class="cal-header">
       <div class="cal-title" id="calTitle"></div>
       <div class="nav-btns">
@@ -726,6 +747,16 @@
 
       <button id="btnGenerate">일정 정리</button>
       <div class="prompt-status" id="promptStatus"></div>
+    </div>
+    </div>
+
+    <div id="driveContent" class="hidden">
+      <div class="drive-header">
+        <div class="dh-title">과목 파일</div>
+        <button class="today-btn" id="btnRefreshDrive" title="새로고침">🔄</button>
+      </div>
+      <div class="subjects-grid" id="subjectsGrid"></div>
+      <button class="add-card-btn" id="btnAddSubject" style="margin-top:10px;">+ 과목 추가</button>
     </div>
   </div>
 </div>
@@ -769,7 +800,12 @@ const state = {
   myBoards: [], // 내가 속한 일정표 목록 {board_id, role, board}
   checks: {}, // {item_id: done} — 로그인 계정별 개인 체크 상태 (항목은 공유, 체크만 개인)
   dayNotes: {}, // {date: {text, photos}} — 날짜별 자유 메모 (공유)
-  memoTarget: null // 프롬프트가 메모를 작성/수정할 대상 날짜 (있으면 프롬프트가 메모 처리)
+  memoTarget: null, // 프롬프트가 메모를 작성/수정할 대상 날짜 (있으면 프롬프트가 메모 처리)
+  tab: 'calendar', // 'calendar' | 'drive'
+  subjects: [], // 현재 드라이브 보드의 과목 목록
+  curSubjectId: null, // 현재 열려있는 과목
+  lastCalBoardId: null,
+  lastDriveBoardId: null
 };
 const newId = ()=> 'id'+Math.random().toString(36).slice(2,9);
 const randCode = ()=> Math.random().toString(36).slice(2,10);
@@ -814,17 +850,31 @@ function notesToMap(rows){
   return map;
 }
 
+function sortSubjects(rows){
+  return (rows||[]).map(r=>({ id:r.id, name:r.name||'과목', sort_order:(r.sort_order||0), worksheets:r.worksheets||[] }))
+    .sort((a,b)=> a.sort_order - b.sort_order);
+}
+
 function enterApp(){
   document.getElementById('authGate').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
-  document.getElementById('promptBox').classList.toggle('hidden', state.readOnly);
+  const isDrive = state.tab === 'drive';
+  document.getElementById('tabCalendar').classList.toggle('inactive', isDrive);
+  document.getElementById('tabDrive').classList.toggle('inactive', !isDrive);
+  document.getElementById('calendarContent').classList.toggle('hidden', isDrive);
+  document.getElementById('driveContent').classList.toggle('hidden', !isDrive);
+  document.getElementById('promptBox').classList.toggle('hidden', state.readOnly || isDrive);
   document.getElementById('viewOnlyBadge').classList.toggle('hidden', !state.readOnly);
   document.getElementById('shareBox').classList.toggle('hidden', state.role !== 'owner');
   document.getElementById('editorBadge').classList.toggle('hidden', state.role !== 'editor');
   document.getElementById('userBar').classList.toggle('hidden', !state.myUserId);
   document.getElementById('topActions').classList.remove('hidden');
+  document.getElementById('btnManageBoards').textContent = isDrive ? '📋 드라이브 관리' : '📋 일정표 관리';
+  document.getElementById('boardSubtitle').textContent = isDrive
+    ? '과목별로 학습지를 정리하고 함께 공유하세요.'
+    : '일정에 사진, 준비물, 안내자료를 핀으로 꽂아두듯 함께 정리하세요.';
   if(state.role === 'owner') document.getElementById('shareCodeText').textContent = state.shareCode;
-  renderCalendar();
+  if(isDrive) renderDrive(); else renderCalendar();
 }
 
 
@@ -857,26 +907,29 @@ async function loadMemberBoard(preferBoardId){
   }
 
   const { data: vboards } = await sb.from('viewer_boards')
-    .select('board_id, share_code, title').eq('user_id', user.id).order('created_at', { ascending:true });
+    .select('board_id, share_code, title, kind').eq('user_id', user.id).order('created_at', { ascending:true });
 
   state.myBoards = [];
   memberships.forEach(m=> state.myBoards.push({
-    board_id: m.board_id, type: m.role,
+    board_id: m.board_id, type: m.role, kind: m.boards.kind || 'calendar',
     share_code: m.boards.share_code, invite_code: m.boards.invite_code, title: m.boards.title
   }));
   const memberIds = new Set(state.myBoards.map(b=>b.board_id));
   (vboards||[]).forEach(v=>{
     if(memberIds.has(v.board_id)) return; // 이미 소유/편집 중이면 보기전용 중복 제외
-    state.myBoards.push({ board_id: v.board_id, type:'viewer', share_code: v.share_code, invite_code: null, title: v.title || '공유 일정표' });
+    state.myBoards.push({ board_id: v.board_id, type:'viewer', kind: v.kind || 'calendar', share_code: v.share_code, invite_code: null, title: v.title || '공유 일정표' });
   });
 
   let chosen = preferBoardId ? state.myBoards.find(b=>b.board_id===preferBoardId) : null;
+  if(!chosen) chosen = state.myBoards.find(b=> (b.kind||'calendar') === state.tab);
   if(!chosen) chosen = state.myBoards[0];
   await activateBoard(chosen);
 }
 
-// 특정 일정표를 화면에 띄우기 (events 로드 후 앱 진입)
+// 특정 보드를 화면에 띄우기 (종류에 따라 캘린더 또는 드라이브)
 async function activateBoard(m){
+  const kind = m.kind || 'calendar';
+  state.tab = (kind === 'drive') ? 'drive' : 'calendar';
   state.mode = (m.type === 'viewer') ? 'viewer' : 'member';
   state.role = (m.type === 'viewer') ? null : m.type;
   state.readOnly = (m.type === 'viewer');
@@ -884,6 +937,8 @@ async function activateBoard(m){
   state.shareCode = m.share_code;
   state.inviteCode = m.invite_code;
   state.editTarget = null;
+  state.memoTarget = null;
+  state.curSubjectId = null;
 
   if(m.type === 'viewer'){
     const res = await fetch('/api/view-board', {
@@ -891,17 +946,27 @@ async function activateBoard(m){
       body: JSON.stringify({ code: m.share_code })
     });
     const data = await res.json();
-    if(!res.ok){ alert('일정 조회 오류: '+(data.error?.message||'')); return; }
-    state.events = eventsToStateMap(data.events||[]);
-    state.dayNotes = notesToMap(data.day_notes||[]);
+    if(!res.ok){ alert('조회 오류: '+(data.error?.message||'')); return; }
+    if(kind === 'drive'){
+      state.subjects = sortSubjects(data.subjects||[]);
+    } else {
+      state.events = eventsToStateMap(data.events||[]);
+      state.dayNotes = notesToMap(data.day_notes||[]);
+    }
   } else {
-    const { data: evRows, error: evErr } = await sb.from('events').select('*').eq('board_id', m.board_id);
-    if(evErr){ alert('일정 조회 오류: '+evErr.message); return; }
-    state.events = eventsToStateMap(evRows||[]);
-    const { data: nrows } = await sb.from('day_notes').select('note_date, text, photos').eq('board_id', m.board_id);
-    state.dayNotes = notesToMap(nrows||[]);
+    if(kind === 'drive'){
+      const { data: srows, error: sErr } = await sb.from('subjects').select('*').eq('board_id', m.board_id);
+      if(sErr){ alert('과목 조회 오류: '+sErr.message); return; }
+      state.subjects = sortSubjects(srows||[]);
+    } else {
+      const { data: evRows, error: evErr } = await sb.from('events').select('*').eq('board_id', m.board_id);
+      if(evErr){ alert('일정 조회 오류: '+evErr.message); return; }
+      state.events = eventsToStateMap(evRows||[]);
+      const { data: nrows } = await sb.from('day_notes').select('note_date, text, photos').eq('board_id', m.board_id);
+      state.dayNotes = notesToMap(nrows||[]);
+    }
   }
-  state.memoTarget = null;
+  if(kind === 'drive') state.lastDriveBoardId = m.board_id; else state.lastCalBoardId = m.board_id;
   await loadChecks();
   enterApp();
 }
@@ -937,6 +1002,160 @@ async function refreshBoard(){
   if(m){ await activateBoard(m); }
   else { await loadMemberBoard(state.boardId); }
   if(btn){ btn.disabled = false; btn.textContent = '🔄'; }
+}
+
+// ====== 파일 드라이브 ======
+// 탭 전환 (일정 핀보드 <-> 파일 드라이브)
+async function switchTab(kind){
+  state.tab = kind;
+  const lastId = kind==='drive' ? state.lastDriveBoardId : state.lastCalBoardId;
+  let target = lastId ? (state.myBoards||[]).find(b=>b.board_id===lastId && (b.kind||'calendar')===kind) : null;
+  if(!target) target = (state.myBoards||[]).find(b=> (b.kind||'calendar')===kind);
+  closePanel();
+  if(target){ await activateBoard(target); }
+  else if(kind==='drive'){ await createBoardOfKind('drive', '내 드라이브'); }
+  else { await loadMemberBoard(); }
+}
+
+// 새 보드 만들기 (kind: 'calendar' | 'drive'), presetName 있으면 이름 안 물음
+async function createBoardOfKind(kind, presetName){
+  let title;
+  if(presetName !== undefined){ title = presetName; }
+  else {
+    const name = prompt(kind==='drive' ? '새 드라이브 이름을 입력하세요:' : '새 일정표 이름을 입력하세요:', kind==='drive'?'내 드라이브':'내 일정표');
+    if(name === null) return;
+    title = name.trim() || (kind==='drive'?'내 드라이브':'내 일정표');
+  }
+  const code = randCode();
+  const invite = randCode();
+  const { data: created, error: cErr } = await sb.from('boards')
+    .insert({ owner_id: state.myUserId, title, share_code: code, invite_code: invite, kind })
+    .select().single();
+  if(cErr){ alert('생성 실패: '+cErr.message); return; }
+  const { error: mErr } = await sb.from('board_members')
+    .insert({ board_id: created.id, user_id: state.myUserId, role: 'owner' });
+  if(mErr){ alert('구성원 등록 실패: '+mErr.message); return; }
+  state.tab = kind;
+  await loadMemberBoard(created.id);
+  if(state.ui.view === 'manage') renderManagePanel();
+}
+
+// 드라이브(과목 목록) 렌더
+function renderDrive(){
+  const grid = document.getElementById('subjectsGrid');
+  const addBtn = document.getElementById('btnAddSubject');
+  if(addBtn) addBtn.classList.toggle('hidden', state.readOnly);
+  if(!grid) return;
+  if(!state.subjects.length){
+    grid.innerHTML = '<p class="empty-hint">아직 과목이 없어요.' + (state.readOnly?'':' 아래 버튼으로 추가하세요.') + '</p>';
+    return;
+  }
+  grid.innerHTML = state.subjects.map(s=>`
+    <div class="subject-file" data-id="${s.id}">
+      <div class="sf-icon">📁</div>
+      <div class="sf-name">${escapeHtml(s.name)}</div>
+      <div class="sf-count">학습지 ${(s.worksheets||[]).length}장</div>
+    </div>`).join('');
+  grid.querySelectorAll('.subject-file').forEach(el=>{
+    el.addEventListener('click', ()=> openSubject(el.dataset.id));
+  });
+}
+
+function openSubject(id){
+  state.curSubjectId = id;
+  state.ui.view = 'subject';
+  renderPanel();
+  openPanel();
+}
+
+function renderSubjectPanel(){
+  const body = document.getElementById('panelBody');
+  const s = state.subjects.find(x=>x.id===state.curSubjectId);
+  if(!s){ closePanel(); return; }
+  body.innerHTML = `
+    <div class="panel-heading">${escapeHtml(s.name)}</div>
+    ${state.readOnly ? '' : `<div class="add-row" style="margin-bottom:14px;">
+      <button class="mi-edit" id="btnRenameSubject">✏️ 이름 변경</button>
+      <button class="mi-del" id="btnDeleteSubject">🗑 과목 삭제</button>
+    </div>`}
+    <div class="worksheet-row" id="worksheetRow"></div>
+    ${state.readOnly ? '' : '<button class="add-card-btn" id="btnAddWorksheet" style="margin-top:12px;">+ 학습지 추가하기</button>'}
+  `;
+  renderWorksheets(s);
+  if(!state.readOnly){
+    document.getElementById('btnRenameSubject').addEventListener('click', ()=> renameSubject(s.id));
+    document.getElementById('btnDeleteSubject').addEventListener('click', ()=> deleteSubject(s.id));
+    document.getElementById('btnAddWorksheet').addEventListener('click', ()=> addWorksheet(s.id));
+  }
+}
+
+function renderWorksheets(s){
+  const row = document.getElementById('worksheetRow');
+  if(!row) return;
+  const ws = s.worksheets || [];
+  if(!ws.length){ row.innerHTML = '<p class="empty-hint">아직 학습지가 없어요.</p>'; return; }
+  row.innerHTML = ws.map(w=>`
+    <div class="worksheet-item" data-id="${w.id}"><img src="${w.dataUrl}"></div>`).join('');
+  row.querySelectorAll('.worksheet-item img').forEach(img=>{
+    img.addEventListener('click', ()=> openLightbox(img.src));
+  });
+}
+
+async function dbUpdateSubject(subjectId, fields){
+  const { error } = await sb.from('subjects').update(fields).eq('id', subjectId);
+  if(error) console.error('subject update error', error);
+}
+
+async function addSubject(){
+  const name = prompt('과목 이름을 입력하세요 (예: 영어)');
+  if(name === null) return;
+  const nm = name.trim(); if(!nm) return;
+  const { data, error } = await sb.from('subjects')
+    .insert({ board_id: state.boardId, name: nm, sort_order: state.subjects.length, worksheets: [] })
+    .select().single();
+  if(error){ alert('과목 추가 실패: '+error.message); return; }
+  state.subjects.push({ id:data.id, name:data.name, sort_order:data.sort_order, worksheets:data.worksheets||[] });
+  renderDrive();
+}
+
+async function renameSubject(subjectId){
+  const s = state.subjects.find(x=>x.id===subjectId);
+  const name = prompt('과목 이름:', s ? s.name : '');
+  if(name === null) return;
+  const nm = name.trim(); if(!nm) return;
+  s.name = nm;
+  await dbUpdateSubject(subjectId, { name: nm });
+  renderDrive(); renderSubjectPanel();
+}
+
+async function deleteSubject(subjectId){
+  if(!confirm('이 과목과 안의 학습지를 모두 삭제할까요?')) return;
+  const { error } = await sb.from('subjects').delete().eq('id', subjectId);
+  if(error){ alert('삭제 실패: '+error.message); return; }
+  state.subjects = state.subjects.filter(x=>x.id!==subjectId);
+  closePanel();
+  renderDrive();
+}
+
+function addWorksheet(subjectId){
+  const input = document.getElementById('photoInput');
+  input.onchange = (e)=>{
+    [...e.target.files].forEach(file=>{
+      const reader = new FileReader();
+      reader.onload = async ()=>{
+        const s = state.subjects.find(x=>x.id===subjectId);
+        if(!s) return;
+        s.worksheets = s.worksheets || [];
+        s.worksheets.push({ id:newId(), dataUrl: reader.result });
+        await dbUpdateSubject(subjectId, { worksheets: s.worksheets });
+        renderSubjectPanel();
+        renderDrive();
+      };
+      reader.readAsDataURL(file);
+    });
+    input.value = '';
+  };
+  input.click();
 }
 
 // 로그인 성공 후: 내 일정표 로드 + URL의 join/code 처리
@@ -978,7 +1197,7 @@ async function addViewerByCode(code){
     const existing = (state.myBoards||[]).find(b=>b.board_id===boardId);
     if(existing){ closePanel(); await switchBoard(boardId); return; }
     const { error } = await sb.from('viewer_boards').upsert(
-      { user_id: state.myUserId, board_id: boardId, share_code: code, title: data.board.title || '공유 일정표' },
+      { user_id: state.myUserId, board_id: boardId, share_code: code, title: data.board.title || '공유', kind: data.board.kind || 'calendar' },
       { onConflict: 'user_id,board_id' }
     );
     if(error) throw error;
@@ -996,12 +1215,15 @@ function openManagePanel(){
 }
 function renderManagePanel(){
   const body = document.getElementById('panelBody');
-  const rows = (state.myBoards||[]).map(m=>{
+  const kind = state.tab;
+  const kindWord = kind==='drive' ? '드라이브' : '일정표';
+  const list = (state.myBoards||[]).filter(b=> (b.kind||'calendar')===kind);
+  const rows = list.map(m=>{
     const isCurrent = m.board_id === state.boardId;
-    const roleLabel = m.type==='owner' ? '내 일정표 (소유자·편집가능)'
-      : m.type==='editor' ? '공유 일정표 (편집가능)'
-      : '보기 전용 일정표';
-    const title = escapeHtml(m.title || '일정표');
+    const roleLabel = m.type==='owner' ? ('내 '+kindWord+' (소유자·편집가능)')
+      : m.type==='editor' ? ('공유 '+kindWord+' (편집가능)')
+      : ('보기 전용 '+kindWord);
+    const title = escapeHtml(m.title || kindWord);
     const editBtn = `<button class="mi-edit" data-id="${m.board_id}" title="이름 변경">✏️</button>`;
     const delBtn = `<button class="mi-del" data-id="${m.board_id}" data-type="${m.type}">삭제</button>`;
     const actions = (m.type==='owner') ? (editBtn + delBtn) : delBtn;
@@ -1015,10 +1237,10 @@ function renderManagePanel(){
       </div>`;
   }).join('');
   body.innerHTML = `
-    <div class="panel-heading">📋 일정표 관리</div>
-    <p class="empty-hint" style="margin-bottom:12px;">클릭하면 그 일정표로 전환돼요. 내 일정표는 ✏️ 이름 변경 · 삭제가 가능해요.</p>
-    ${rows}
-    <button class="add-card-btn" id="btnCreateBoard" style="margin-top:6px;">+ 새 개인 일정표 만들기</button>
+    <div class="panel-heading">📋 ${kindWord} 관리</div>
+    <p class="empty-hint" style="margin-bottom:12px;">클릭하면 그 ${kindWord}로 전환돼요. 내 ${kindWord}는 ✏️ 이름 변경 · 삭제가 가능해요.</p>
+    ${rows || ('<p class="empty-hint">아직 '+kindWord+'가 없어요.</p>')}
+    <button class="add-card-btn" id="btnCreateBoard" style="margin-top:6px;">+ 새 ${kindWord} 만들기</button>
   `;
   body.querySelectorAll('[data-switch]').forEach(el=>{
     el.addEventListener('click', ()=> switchBoard(el.dataset.switch));
@@ -1027,8 +1249,8 @@ function renderManagePanel(){
     btn.addEventListener('click', async ()=>{
       const type = btn.dataset.type;
       const msg = type==='owner'
-        ? '이 개인 일정표를 삭제하면 안의 모든 일정이 사라지고, 공유받은 구성원도 접근할 수 없게 돼요. 삭제할까요?'
-        : '이 일정표를 목록에서 삭제하시겠습니까?';
+        ? ('이 '+kindWord+'를 삭제하면 안의 내용이 모두 사라지고, 공유받은 구성원도 접근할 수 없게 돼요. 삭제할까요?')
+        : ('이 '+kindWord+'를 목록에서 삭제하시겠습니까?');
       if(!confirm(msg)) return;
       await deleteBoardFromList(btn.dataset.id, type);
     });
@@ -1037,7 +1259,7 @@ function renderManagePanel(){
     btn.addEventListener('click', ()=> renameBoard(btn.dataset.id));
   });
   const bc = document.getElementById('btnCreateBoard');
-  if(bc) bc.addEventListener('click', createPersonalBoard);
+  if(bc) bc.addEventListener('click', ()=> createBoardOfKind(state.tab));
 }
 
 // 새 개인 일정표(소유자) 만들기
@@ -1393,6 +1615,11 @@ function renderPanel(){
 
   if(state.ui.view === 'manage'){
     renderManagePanel();
+    return;
+  }
+
+  if(state.ui.view === 'subject'){
+    renderSubjectPanel();
     return;
   }
 
@@ -2069,6 +2296,10 @@ document.getElementById('btnToday').addEventListener('click', ()=>{
   renderCalendar();
 });
 document.getElementById('btnRefresh').addEventListener('click', refreshBoard);
+document.getElementById('btnRefreshDrive').addEventListener('click', refreshBoard);
+document.getElementById('tabCalendar').addEventListener('click', ()=> switchTab('calendar'));
+document.getElementById('tabDrive').addEventListener('click', ()=> switchTab('drive'));
+document.getElementById('btnAddSubject').addEventListener('click', addSubject);
 document.getElementById('panelClose').addEventListener('click', closePanel);
 document.getElementById('overlay').addEventListener('click', closePanel);
 
