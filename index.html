@@ -600,14 +600,27 @@
   }
   .delete-event-btn:hover{ background:var(--rust); color:#fff; }
 
-  .board-switch{
-    display:flex; align-items:center; gap:8px;
-    margin-bottom:12px; font-size:12px; color:var(--ink-soft);
+  .top-actions{ display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap; }
+  .top-actions button{
+    flex:1; min-width:90px;
+    font-family:'IBM Plex Mono',monospace; font-size:11px;
+    background:var(--white-note); border:1px solid var(--paper-edge);
+    border-radius:7px; padding:8px 6px; cursor:pointer; color:var(--ink);
   }
-  .board-switch select{
-    flex:1; font-family:'Inter',sans-serif; font-size:12.5px;
-    padding:6px 8px; border:1px solid var(--paper-edge);
-    border-radius:7px; background:var(--white-note); color:var(--ink);
+  .top-actions button:hover{ border-color:var(--teal); color:var(--teal); }
+
+  .manage-item{
+    display:flex; align-items:center; justify-content:space-between;
+    background:var(--white-note); border:1px solid var(--paper-edge);
+    border-radius:8px; padding:10px 12px; margin-bottom:8px;
+  }
+  .manage-item.current{ border-color:var(--teal); background:var(--teal-soft); }
+  .manage-item .mi-main{ flex:1; cursor:pointer; }
+  .manage-item .mi-title{ font-size:13px; font-weight:600; }
+  .manage-item .mi-role{ font-size:10.5px; color:var(--ink-soft); margin-top:2px; font-family:'IBM Plex Mono',monospace; }
+  .manage-item .mi-del{
+    background:none; border:1px solid var(--rust); color:var(--rust);
+    border-radius:6px; padding:4px 8px; font-size:10.5px; cursor:pointer; margin-left:8px;
   }
 
   /* 모바일 대응 */
@@ -628,36 +641,17 @@
 <body>
 
 <div id="authGate">
-  <div class="auth-card" id="modeSelectCard">
+  <div class="auth-card" id="loginCard">
     <h1>일정 핀보드</h1>
-    <p class="auth-sub">일정표를 만들고 편집하러 오셨나요, 공유받은 코드로 보러 오셨나요?</p>
-    <button class="auth-submit" id="btnModeEdit">로그인해서 만들기 / 편집하기</button>
-    <button class="auth-submit" id="btnModeJoin" style="margin-top:8px; background:var(--teal);">초대 코드로 그룹 참여하기</button>
-    <button class="auth-submit" id="btnModeView" style="margin-top:8px; background:var(--ink);">공유 코드로 보기</button>
-  </div>
-
-  <div class="auth-card hidden" id="loginCard">
-    <h1 id="loginCardTitle">일정 핀보드</h1>
-    <p class="auth-sub" id="loginCardSub">로그인하고 나만의 캘린더를 만들어보세요.</p>
+    <p class="auth-sub">로그인하거나 회원가입하세요.</p>
     <div class="auth-tabs">
       <div class="auth-tab active" id="tabSignin">로그인</div>
       <div class="auth-tab" id="tabSignup">회원가입</div>
     </div>
     <input type="email" id="authEmail" placeholder="이메일">
     <input type="password" id="authPassword" placeholder="비밀번호 (6자 이상)">
-    <input type="text" id="joinInviteCode" class="hidden" placeholder="초대 코드 (예: 9x2m4k7p)">
     <button class="auth-submit" id="authSubmit">로그인</button>
     <div class="auth-status" id="authStatus"></div>
-    <button class="auth-submit" id="btnBackFromLogin" style="margin-top:10px; background:none; color:var(--ink-soft); border:1px solid var(--paper-edge);">← 뒤로</button>
-  </div>
-
-  <div class="auth-card hidden" id="viewCodeCard">
-    <h1>공유 코드로 보기</h1>
-    <p class="auth-sub">전달받은 공유 코드를 입력하면 로그인 없이 볼 수 있어요. (수정은 불가)</p>
-    <input type="text" id="viewCodeInput" placeholder="예: 7f3k9a2q">
-    <button class="auth-submit" id="btnViewSubmit">보기</button>
-    <div class="auth-status" id="viewStatus"></div>
-    <button class="auth-submit" id="btnBackFromView" style="margin-top:10px; background:none; color:var(--ink-soft); border:1px solid var(--paper-edge);">← 뒤로</button>
   </div>
 </div>
 
@@ -681,9 +675,10 @@
       <button id="btnOpenGroupEditor">👥 그룹</button>
     </div>
     <div class="viewonly-badge hidden" id="viewOnlyBadge">👀 읽기 전용으로 보고 있어요 (편집 불가)</div>
-    <div class="board-switch hidden" id="boardSwitchWrap">
-      <span>일정표:</span>
-      <select id="boardSwitch"></select>
+    <div class="top-actions hidden" id="topActions">
+      <button id="btnManageBoards">📋 일정표 관리</button>
+      <button id="btnJoinGroup">👥 그룹 참여</button>
+      <button id="btnAddViewer">👁 공유코드 추가</button>
     </div>
     <p class="subtitle">일정에 사진, 준비물, 안내자료를 핀으로 꽂아두듯 함께 정리하세요.</p>
 
@@ -795,24 +790,12 @@ function enterApp(){
   document.getElementById('viewOnlyBadge').classList.toggle('hidden', !state.readOnly);
   document.getElementById('shareBox').classList.toggle('hidden', state.role !== 'owner');
   document.getElementById('editorBadge').classList.toggle('hidden', state.role !== 'editor');
-  document.getElementById('userBar').classList.toggle('hidden', state.mode !== 'member');
+  document.getElementById('userBar').classList.toggle('hidden', !state.myUserId);
+  document.getElementById('topActions').classList.remove('hidden');
   if(state.role === 'owner') document.getElementById('shareCodeText').textContent = state.shareCode;
-  renderBoardSwitch();
   renderCalendar();
 }
 
-function renderBoardSwitch(){
-  const wrap = document.getElementById('boardSwitchWrap');
-  const sel = document.getElementById('boardSwitch');
-  if(!wrap || !sel) return;
-  if(!state.myBoards || state.myBoards.length < 2){ wrap.classList.add('hidden'); return; }
-  wrap.classList.remove('hidden');
-  sel.innerHTML = state.myBoards.map(m=>{
-    const label = m.role === 'owner' ? '내 일정표' : ('공유 일정표 (코드 ' + (m.board.share_code||'') + ')');
-    const selected = m.board_id === state.boardId ? 'selected' : '';
-    return `<option value="${m.board_id}" ${selected}>${escapeHtml(label)}</option>`;
-  }).join('');
-}
 
 // ---- 구성원(owner/editor) 흐름: 로그인 -> 내가 속한 board 목록 조회, 없으면 새로 생성 -> 하나 활성화 ----
 async function loadMemberBoard(preferBoardId){
@@ -842,7 +825,19 @@ async function loadMemberBoard(preferBoardId){
     memberships = [{ role:'owner', board_id: created.id, boards: created }];
   }
 
-  state.myBoards = memberships.map(m=>({ board_id:m.board_id, role:m.role, board:m.boards }));
+  const { data: vboards } = await sb.from('viewer_boards')
+    .select('board_id, share_code, title').eq('user_id', user.id).order('created_at', { ascending:true });
+
+  state.myBoards = [];
+  memberships.forEach(m=> state.myBoards.push({
+    board_id: m.board_id, type: m.role,
+    share_code: m.boards.share_code, invite_code: m.boards.invite_code, title: m.boards.title
+  }));
+  const memberIds = new Set(state.myBoards.map(b=>b.board_id));
+  (vboards||[]).forEach(v=>{
+    if(memberIds.has(v.board_id)) return; // 이미 소유/편집 중이면 보기전용 중복 제외
+    state.myBoards.push({ board_id: v.board_id, type:'viewer', share_code: v.share_code, invite_code: null, title: v.title || '공유 일정표' });
+  });
 
   let chosen = preferBoardId ? state.myBoards.find(b=>b.board_id===preferBoardId) : null;
   if(!chosen) chosen = state.myBoards[0];
@@ -851,17 +846,27 @@ async function loadMemberBoard(preferBoardId){
 
 // 특정 일정표를 화면에 띄우기 (events 로드 후 앱 진입)
 async function activateBoard(m){
-  state.mode = 'member';
-  state.role = m.role;
-  state.readOnly = false;
-  state.boardId = m.board.id;
-  state.shareCode = m.board.share_code;
-  state.inviteCode = m.board.invite_code;
+  state.mode = (m.type === 'viewer') ? 'viewer' : 'member';
+  state.role = (m.type === 'viewer') ? null : m.type;
+  state.readOnly = (m.type === 'viewer');
+  state.boardId = m.board_id;
+  state.shareCode = m.share_code;
+  state.inviteCode = m.invite_code;
   state.editTarget = null;
 
-  const { data: evRows, error: evErr } = await sb.from('events').select('*').eq('board_id', m.board.id);
-  if(evErr){ alert('일정 조회 오류: '+evErr.message); return; }
-  state.events = eventsToStateMap(evRows||[]);
+  if(m.type === 'viewer'){
+    const res = await fetch('/api/view-board', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ code: m.share_code })
+    });
+    const data = await res.json();
+    if(!res.ok){ alert('일정 조회 오류: '+(data.error?.message||'')); return; }
+    state.events = eventsToStateMap(data.events||[]);
+  } else {
+    const { data: evRows, error: evErr } = await sb.from('events').select('*').eq('board_id', m.board_id);
+    if(evErr){ alert('일정 조회 오류: '+evErr.message); return; }
+    state.events = eventsToStateMap(evRows||[]);
+  }
   await loadChecks();
   enterApp();
 }
@@ -881,12 +886,116 @@ async function setCheck(itemId, done){
   if(error) console.error('check save error', error);
 }
 
-// 드롭다운으로 다른 일정표로 전환
+// 다른 일정표로 전환
 async function switchBoard(boardId){
   const m = (state.myBoards||[]).find(b=>b.board_id===boardId);
   if(!m) return;
   closePanel();
   await activateBoard(m);
+}
+
+// 로그인 성공 후: 내 일정표 로드 + URL의 join/code 처리
+async function afterLogin(){
+  await loadMemberBoard();
+  const params = new URLSearchParams(location.search);
+  const joinCode = params.get('join');
+  const viewCode = params.get('code');
+  if(joinCode){ await joinGroupByCode(joinCode); }
+  else if(viewCode){ await addViewerByCode(viewCode); }
+}
+
+// 초대 코드로 편집 가능 일정표 참여
+async function joinGroupByCode(code){
+  code = (code||'').trim();
+  if(!code) return;
+  try{
+    const { error } = await sb.rpc('join_board_by_invite_code', { p_code: code });
+    if(error) throw error;
+    const { data: jb } = await sb.from('boards').select('id').eq('invite_code', code).single();
+    await loadMemberBoard(jb ? jb.id : undefined);
+    closePanel();
+    alert('그룹에 편집자로 참여했어요.');
+  }catch(err){ alert('참여 실패: ' + (err.message || err)); }
+}
+
+// 공유 코드로 보기 전용 일정표 추가
+async function addViewerByCode(code){
+  code = (code||'').trim();
+  if(!code) return;
+  try{
+    const res = await fetch('/api/view-board', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ code })
+    });
+    const data = await res.json();
+    if(!res.ok){ throw new Error(data.error?.message || '코드를 확인해주세요.'); }
+    const boardId = data.board.id;
+    const existing = (state.myBoards||[]).find(b=>b.board_id===boardId);
+    if(existing){ closePanel(); await switchBoard(boardId); return; }
+    const { error } = await sb.from('viewer_boards').upsert(
+      { user_id: state.myUserId, board_id: boardId, share_code: code, title: data.board.title || '공유 일정표' },
+      { onConflict: 'user_id,board_id' }
+    );
+    if(error) throw error;
+    await loadMemberBoard(boardId);
+    closePanel();
+    alert('보기 전용 일정표를 추가했어요.');
+  }catch(err){ alert('추가 실패: ' + (err.message || err)); }
+}
+
+// 일정표 관리 패널
+function openManagePanel(){
+  state.ui.view = 'manage';
+  renderPanel();
+  openPanel();
+}
+function renderManagePanel(){
+  const body = document.getElementById('panelBody');
+  const rows = (state.myBoards||[]).map(m=>{
+    const isCurrent = m.board_id === state.boardId;
+    const roleLabel = m.type==='owner' ? '내 일정표 (소유자·편집가능)'
+      : m.type==='editor' ? '공유 일정표 (편집가능)'
+      : '보기 전용 일정표';
+    const title = escapeHtml(m.title || '일정표');
+    const delBtn = (m.type==='owner') ? '' :
+      `<button class="mi-del" data-id="${m.board_id}" data-type="${m.type}">삭제</button>`;
+    return `
+      <div class="manage-item ${isCurrent?'current':''}">
+        <div class="mi-main" data-switch="${m.board_id}">
+          <div class="mi-title">${title}${isCurrent?' ✓':''}</div>
+          <div class="mi-role">${roleLabel}</div>
+        </div>
+        ${delBtn}
+      </div>`;
+  }).join('');
+  body.innerHTML = `
+    <div class="panel-heading">📋 일정표 관리</div>
+    <p class="empty-hint" style="margin-bottom:14px;">클릭하면 그 일정표로 전환돼요. (내 일정표는 삭제 불가)</p>
+    ${rows}
+  `;
+  body.querySelectorAll('[data-switch]').forEach(el=>{
+    el.addEventListener('click', ()=> switchBoard(el.dataset.switch));
+  });
+  body.querySelectorAll('.mi-del').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      if(!confirm('이 일정표를 목록에서 삭제하시겠습니까?')) return;
+      await deleteBoardFromList(btn.dataset.id, btn.dataset.type);
+    });
+  });
+}
+async function deleteBoardFromList(boardId, type){
+  if(type === 'editor'){
+    const { error } = await sb.from('board_members').delete()
+      .eq('board_id', boardId).eq('user_id', state.myUserId);
+    if(error){ alert('삭제 실패: '+error.message); return; }
+  } else if(type === 'viewer'){
+    const { error } = await sb.from('viewer_boards').delete()
+      .eq('board_id', boardId).eq('user_id', state.myUserId);
+    if(error){ alert('삭제 실패: '+error.message); return; }
+  }
+  const wasCurrent = (boardId === state.boardId);
+  await loadMemberBoard(wasCurrent ? undefined : state.boardId);
+  if(state.ui.view === 'manage') renderManagePanel();
 }
 
 // ---- 뷰어(읽기 전용) 흐름: 코드 입력 -> 서버 함수로 조회 ----
@@ -931,33 +1040,14 @@ async function dbDeleteEvent(ev){
 // ====== 인증 게이트 UI 로직 ======
 const $ = (id)=>document.getElementById(id);
 
-function showLoginCard(flow){
-  state.authFlow = flow; // 'create' | 'join'
-  $('modeSelectCard').classList.add('hidden');
-  $('loginCard').classList.remove('hidden');
-  $('joinInviteCode').classList.toggle('hidden', flow !== 'join');
-  if(flow === 'join'){
-    $('loginCardTitle').textContent = '그룹에 참여하기';
-    $('loginCardSub').textContent = '초대 코드를 받으셨나요? 로그인(또는 회원가입) 후 코드를 입력하면 그룹의 편집자로 합류해요.';
-  } else {
-    $('loginCardTitle').textContent = '일정 핀보드';
-    $('loginCardSub').textContent = '로그인하고 나만의 캘린더를 만들어보세요.';
-  }
-}
-
-$('btnModeEdit').addEventListener('click', ()=> showLoginCard('create'));
-$('btnModeJoin').addEventListener('click', ()=> showLoginCard('join'));
-$('btnModeView').addEventListener('click', ()=>{
-  $('modeSelectCard').classList.add('hidden');
-  $('viewCodeCard').classList.remove('hidden');
+$('btnManageBoards').addEventListener('click', openManagePanel);
+$('btnJoinGroup').addEventListener('click', ()=>{
+  const code = prompt('참여할 그룹의 초대 코드를 입력하세요:');
+  if(code && code.trim()) joinGroupByCode(code.trim());
 });
-$('btnBackFromLogin').addEventListener('click', ()=>{
-  $('loginCard').classList.add('hidden');
-  $('modeSelectCard').classList.remove('hidden');
-});
-$('btnBackFromView').addEventListener('click', ()=>{
-  $('viewCodeCard').classList.add('hidden');
-  $('modeSelectCard').classList.remove('hidden');
+$('btnAddViewer').addEventListener('click', ()=>{
+  const code = prompt('추가할 일정표의 공유 코드를 입력하세요:');
+  if(code && code.trim()) addViewerByCode(code.trim());
 });
 
 let authTab = 'signin';
@@ -976,30 +1066,18 @@ $('authSubmit').addEventListener('click', async ()=>{
   const email = $('authEmail').value.trim();
   const password = $('authPassword').value;
   const status = $('authStatus');
-  const joinFlow = state.authFlow === 'join';
-  const inviteCode = $('joinInviteCode').value.trim();
   if(!email || !password){ status.textContent='이메일/비밀번호를 입력해주세요.'; status.className='auth-status error'; return; }
-  if(joinFlow && !inviteCode){ status.textContent='초대 코드를 입력해주세요.'; status.className='auth-status error'; return; }
   $('authSubmit').disabled = true;
   status.textContent = '처리 중...'; status.className='auth-status';
   try{
     if(authTab==='signin'){
       const { error } = await sb.auth.signInWithPassword({ email, password });
       if(error) throw error;
-      let joinedBoardId;
-      if(joinFlow){
-        const { error: jErr } = await sb.rpc('join_board_by_invite_code', { p_code: inviteCode });
-        if(jErr) throw jErr;
-        const { data: jb } = await sb.from('boards').select('id').eq('invite_code', inviteCode).single();
-        if(jb) joinedBoardId = jb.id;
-      }
-      await loadMemberBoard(joinedBoardId);
+      await afterLogin();
     } else {
       const { error } = await sb.auth.signUp({ email, password });
       if(error) throw error;
-      status.textContent = joinFlow
-        ? '가입 완료! 이메일 확인이 필요할 수 있어요. 로그인 후 같은 초대 코드로 다시 로그인해주세요.'
-        : '가입 완료! 이메일 확인이 필요할 수 있어요. 로그인해주세요.';
+      status.textContent = '가입 완료! 이메일 확인이 필요할 수 있어요. 로그인해주세요.';
       status.className='auth-status ok';
     }
   }catch(err){
@@ -1007,21 +1085,6 @@ $('authSubmit').addEventListener('click', async ()=>{
     status.className='auth-status error';
   }
   $('authSubmit').disabled = false;
-});
-
-$('btnViewSubmit').addEventListener('click', async ()=>{
-  const code = $('viewCodeInput').value.trim();
-  const status = $('viewStatus');
-  if(!code){ status.textContent='코드를 입력해주세요.'; status.className='auth-status error'; return; }
-  $('btnViewSubmit').disabled = true;
-  status.textContent = '조회 중...'; status.className='auth-status';
-  try{
-    await loadViewerBoard(code);
-  }catch(err){
-    status.textContent = err.message;
-    status.className='auth-status error';
-  }
-  $('btnViewSubmit').disabled = false;
 });
 
 $('btnSignOut').addEventListener('click', async ()=>{
@@ -1127,32 +1190,9 @@ function renderGroupPanel(){
 
 // ---- 부팅: URL에 ?join=가 있으면 초대 코드 참여 화면으로, ?code=가 있으면 뷰어로 바로 진입 ----
 async function boot(){
-  const params = new URLSearchParams(location.search);
-  const urlJoin = params.get('join');
-  if(urlJoin){
-    const { data:{ session } } = await sb.auth.getSession();
-    if(session){
-      try{
-        const { error } = await sb.rpc('join_board_by_invite_code', { p_code: urlJoin });
-        if(error) throw error;
-        const { data: jb } = await sb.from('boards').select('id').eq('invite_code', urlJoin).single();
-        await loadMemberBoard(jb ? jb.id : undefined);
-        return;
-      }catch(err){ /* 코드가 잘못됐으면 그냥 모드 선택 화면으로 진행 */ }
-    } else {
-      showLoginCard('join');
-      $('joinInviteCode').value = urlJoin;
-      return;
-    }
-  }
-  const urlCode = params.get('code');
-  if(urlCode){
-    try{ await loadViewerBoard(urlCode); return; }
-    catch(err){ /* 코드가 잘못됐으면 그냥 모드 선택 화면으로 진행 */ }
-  }
   const { data:{ session } } = await sb.auth.getSession();
-  if(session){ await loadMemberBoard(); }
-  // session 없으면 authGate의 모드 선택 화면이 기본으로 보임 (아무것도 안 해도 됨)
+  if(session){ await afterLogin(); }
+  // 세션 없으면 로그인 카드가 기본으로 보임
 }
 boot();
 
@@ -1232,6 +1272,11 @@ function renderPanel(){
 
   if(state.ui.view === 'group'){
     renderGroupPanel();
+    return;
+  }
+
+  if(state.ui.view === 'manage'){
+    renderManagePanel();
     return;
   }
 
@@ -1795,7 +1840,6 @@ ${text}
 }
 
 document.getElementById('btnGenerate').addEventListener('click', generateFromPrompt);
-document.getElementById('boardSwitch').addEventListener('change', (e)=> switchBoard(e.target.value));
 
 document.getElementById('btnPrev').addEventListener('click', ()=>{
   state.cursor.setMonth(state.cursor.getMonth()-1);
