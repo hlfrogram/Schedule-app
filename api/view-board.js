@@ -48,10 +48,16 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: { message: '일정 조회 중 오류가 발생했어요.' } });
     }
 
-    // 프론트에는 board id/title과 events만 반환 (owner_id 등 민감 정보 제외)
+    const { data: notes } = await admin
+      .from('day_notes')
+      .select('note_date, text, photos')
+      .eq('board_id', board.id);
+
+    // 프론트에는 board id/title과 events, day_notes만 반환 (민감 정보 제외)
     return res.status(200).json({
       board: { id: board.id, title: board.title },
-      events: events || []
+      events: events || [],
+      day_notes: notes || []
     });
   } catch (err) {
     console.error('view-board error:', err);
