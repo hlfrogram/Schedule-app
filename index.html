@@ -678,7 +678,7 @@
     <div class="share-box hidden" id="shareBox">
       <span>공유 코드: <b id="shareCodeText"></b></span>
       <div class="share-actions">
-        <button id="btnCopyLink">보기 링크 복사</button>
+        <button id="btnCopyLink">보기 코드 복사</button>
         <button class="secondary" id="btnOpenGroup">👥 그룹</button>
       </div>
     </div>
@@ -1109,10 +1109,9 @@ $('btnSignOut').addEventListener('click', async ()=>{
 });
 
 $('btnCopyLink').addEventListener('click', ()=>{
-  const url = `${location.origin}${location.pathname}?code=${state.shareCode}`;
-  navigator.clipboard.writeText(url);
+  navigator.clipboard.writeText(state.shareCode);
   $('btnCopyLink').textContent = '복사됨!';
-  setTimeout(()=>{ $('btnCopyLink').textContent = '보기 링크 복사'; }, 1500);
+  setTimeout(()=>{ $('btnCopyLink').textContent = '보기 코드 복사'; }, 1500);
 });
 
 // ====== 그룹(구성원) 관리 패널 ======
