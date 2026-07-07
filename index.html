@@ -9,21 +9,21 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{
-    --board:#00243F;
-    --board-dark:#001827;
-    --paper:#EDF5FA;
-    --paper-edge:#AEC6D6;
-    --paper-line:#D2E3EE;
-    --ink:#10202C;
-    --ink-soft:#3A4A57;
-    --teal:#3E7C74;
-    --teal-soft:#DCE9E6;
-    --ochre:#C2871F;
-    --ochre-soft:#F3E3C4;
-    --rust:#B75B3D;
-    --rust-soft:#F0DAD0;
-    --white-note:#FFFDF7;
-    --shadow: rgba(15,15,10,0.35);
+    --board:#141824;
+    --board-dark:#0d111a;
+    --paper:#FFFFFF;
+    --paper-edge:#E1E7EF;
+    --paper-line:#E6EAEF;
+    --ink:#141A22;
+    --ink-soft:#5A6470;
+    --teal:#2F6BED;
+    --teal-soft:#EDF3FD;
+    --ochre:#2F6BED;
+    --ochre-soft:#EAF1FD;
+    --rust:#2F6BED;
+    --rust-soft:#EDF3FD;
+    --white-note:#FFFFFF;
+    --shadow: rgba(20,24,36,0.28);
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -205,8 +205,6 @@
     color:var(--ink-soft);
     letter-spacing:0.06em;
   }
-  .weekdays div:first-child{ color:#d13b3b; } /* 일요일 빨강 */
-  .weekdays div:last-child{ color:#2b62d6; }  /* 토요일 파랑 */
   .grid{
     display:grid;
     grid-template-columns:repeat(7,minmax(0,1fr));
@@ -269,7 +267,7 @@
   .ev-dot{
     flex:0 0 auto;
     width:6px; height:6px; border-radius:50%;
-    background:#2b62d6;
+    background:#2F6BED;
     box-shadow:0 1px 1px var(--shadow);
   }
 
@@ -765,10 +763,10 @@ function sortEventsByTime(evs){
 // 일정 개수가 많을수록 날짜 칸 배경을 점점 진한 빨강으로
 function dayBgColor(n){
   if(!n) return 'var(--white-note)';
-  const t = Math.min(0.15 + (n-1)*0.18, 0.6);
-  const r = Math.round(255 + (209-255)*t);
-  const g = Math.round(253 + (59-253)*t);
-  const b = Math.round(247 + (59-247)*t);
+  const t = Math.min(0.12 + (n-1)*0.16, 0.5);
+  const r = Math.round(255 + (110-255)*t);
+  const g = Math.round(255 + (165-255)*t);
+  const b = Math.round(255 + (240-255)*t);
   return 'rgb(' + r + ',' + g + ',' + b + ')';
 }
 
