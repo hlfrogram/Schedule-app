@@ -660,6 +660,7 @@
   .worksheet-item.drop-target img{ outline:2px dashed var(--teal); outline-offset:2px; }
   .ws-handle{ flex:0 0 auto; cursor:grab; font-size:18px; color:var(--ink-soft); padding:2px 0; user-select:none; line-height:1.4; }
   .worksheet-item img{ flex:1; min-width:0; width:100%; border-radius:8px; border:1px solid var(--paper-edge); cursor:zoom-in; display:block; }
+  .ws-del{ flex:0 0 auto; background:none; border:none; color:var(--rust); font-size:16px; cursor:pointer; padding:2px 4px; }
 
   /* 모바일 대응 */
   @media (max-width:480px){
@@ -1005,12 +1006,13 @@ async function switchBoard(boardId){
 
 // 현재 일정표 데이터만 다시 불러오기 (사이트 전체 새로고침 없이 최신 반영)
 async function refreshBoard(){
-  const m = (state.myBoards||[]).find(b=>b.board_id===state.boardId);
   const btn = document.getElementById('btnRefresh');
+  const btn2 = document.getElementById('btnRefreshDrive');
   if(btn){ btn.disabled = true; btn.textContent = '⏳'; }
-  if(m){ await activateBoard(m); }
-  else { await loadMemberBoard(state.boardId); }
+  if(btn2){ btn2.disabled = true; btn2.textContent = '⏳'; }
+  await loadMemberBoard(state.boardId); // 목록(이름 포함)까지 최신으로 다시 로드
   if(btn){ btn.disabled = false; btn.textContent = '🔄'; }
+  if(btn2){ btn2.disabled = false; btn2.textContent = '🔄'; }
 }
 
 // ====== 파일 드라이브 ======
@@ -1107,11 +1109,25 @@ function renderWorksheets(s){
     <div class="worksheet-item" data-id="${w.id}" data-idx="${i}" ${state.readOnly?'':'draggable="true"'}>
       ${state.readOnly?'':'<div class="ws-handle" title="드래그해서 순서 변경">⇅</div>'}
       <img src="${w.dataUrl}" draggable="false">
+      ${state.readOnly?'':`<button class="ws-del" data-id="${w.id}" title="삭제">✕</button>`}
     </div>`).join('');
   row.querySelectorAll('.worksheet-item img').forEach(img=>{
     img.addEventListener('click', ()=> openLightbox(img.src));
   });
-  if(!state.readOnly) attachWorksheetDrag(row, s);
+  if(!state.readOnly){
+    attachWorksheetDrag(row, s);
+    row.querySelectorAll('.ws-del').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{ e.stopPropagation(); deleteWorksheet(s, btn.dataset.id); });
+    });
+  }
+}
+
+async function deleteWorksheet(s, wid){
+  if(!confirm('이 학습지를 삭제할까요?')) return;
+  s.worksheets = (s.worksheets||[]).filter(w=>w.id!==wid);
+  await dbUpdateSubject(s.id, { worksheets: s.worksheets });
+  renderSubjectPanel();
+  renderDrive();
 }
 
 let wsDragFrom = null;
