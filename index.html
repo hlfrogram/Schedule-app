@@ -764,7 +764,9 @@ const state = {
   authFlow: 'create', // 'create' | 'join' — 로그인 버튼을 눌렀을 때 목적
   editTarget: null, // {date, id, title} — 선택된 일정 (있으면 프롬프트가 수정, 없으면 새로 추가)
   myBoards: [], // 내가 속한 일정표 목록 {board_id, role, board}
-  checks: {} // {item_id: done} — 로그인 계정별 개인 체크 상태 (항목은 공유, 체크만 개인)
+  checks: {}, // {item_id: done} — 로그인 계정별 개인 체크 상태 (항목은 공유, 체크만 개인)
+  dayNotes: {}, // {date: {text, photos}} — 날짜별 자유 메모 (공유)
+  memoTarget: null // 프롬프트가 메모를 작성/수정할 대상 날짜 (있으면 프롬프트가 메모 처리)
 };
 const newId = ()=> 'id'+Math.random().toString(36).slice(2,9);
 const randCode = ()=> Math.random().toString(36).slice(2,10);
@@ -800,6 +802,12 @@ function eventsToStateMap(rows){
     if(!map[r.event_date]) map[r.event_date] = [];
     map[r.event_date].push(ev);
   });
+  return map;
+}
+
+function notesToMap(rows){
+  const map = {};
+  (rows||[]).forEach(r=>{ map[r.note_date] = { text: r.text||'', photos: r.photos||[] }; });
   return map;
 }
 
@@ -882,11 +890,15 @@ async function activateBoard(m){
     const data = await res.json();
     if(!res.ok){ alert('일정 조회 오류: '+(data.error?.message||'')); return; }
     state.events = eventsToStateMap(data.events||[]);
+    state.dayNotes = notesToMap(data.day_notes||[]);
   } else {
     const { data: evRows, error: evErr } = await sb.from('events').select('*').eq('board_id', m.board_id);
     if(evErr){ alert('일정 조회 오류: '+evErr.message); return; }
     state.events = eventsToStateMap(evRows||[]);
+    const { data: nrows } = await sb.from('day_notes').select('note_date, text, photos').eq('board_id', m.board_id);
+    state.dayNotes = notesToMap(nrows||[]);
   }
+  state.memoTarget = null;
   await loadChecks();
   enterApp();
 }
@@ -1101,6 +1113,17 @@ async function dbDeleteEvent(ev){
   const { error } = await sb.from('events').delete().eq('id', ev.id);
   if(error) console.error('delete error', error);
 }
+async function dbSaveDayNote(dateKey, note){
+  const { error } = await sb.from('day_notes').upsert(
+    { board_id: state.boardId, note_date: dateKey, text: note.text, photos: note.photos },
+    { onConflict: 'board_id,note_date' }
+  );
+  if(error) console.error('day note save error', error);
+}
+async function dbDeleteDayNote(dateKey){
+  const { error } = await sb.from('day_notes').delete().eq('board_id', state.boardId).eq('note_date', dateKey);
+  if(error) console.error('day note delete error', error);
+}
 
 // ====== 인증 게이트 UI 로직 ======
 const $ = (id)=>document.getElementById(id);
@@ -1308,10 +1331,7 @@ function escapeHtml(s){ const d=document.createElement('div'); d.textContent=s||
 
 function openDay(dateKey){
   state.ui.date = dateKey;
-  const evs = state.events[dateKey] || [];
-  if(evs.length === 0){ state.ui.view='empty'; }
-  else if(evs.length === 1){ state.ui.view='detail'; state.ui.eventId = evs[0].id; }
-  else { state.ui.view='list'; }
+  state.ui.view = 'list';
   renderPanel();
   openPanel();
 }
@@ -1360,17 +1380,27 @@ function renderPanel(){
     body.innerHTML = `
       <div class="panel-date">${fmtDateLabel(dateKey)}</div>
       <div class="panel-heading">이 날의 일정</div>
-      ${evs.map(e=>`
+      ${evs.length ? evs.map(e=>`
         <div class="event-list-item" data-id="${e.id}">
           <div class="t">${escapeHtml(e.title)}</div>
           <div class="m">${e.time||''} · ${escapeHtml(e.location||'')}</div>
-        </div>`).join('')}
-      ${state.readOnly ? '' : '<button class="add-card-btn" id="btnAddMore">+ 이 날짜에 일정 더 추가하기</button>'}
+        </div>`).join('') : '<p class="empty-hint" style="margin-bottom:8px;">등록된 일정이 없어요.</p>'}
+      ${state.readOnly ? '' : '<button class="add-card-btn" id="btnAddMore">+ 이 날짜에 일정 추가하기</button>'}
+
+      <div class="section-label" style="margin-top:24px;"><span class="dot" style="background:var(--teal)"></span>이 날의 메모</div>
+      <div id="dayNoteView"></div>
+      ${state.readOnly ? '' : '<button class="add-card-btn" id="btnMemoPrompt">✏️ 이 날의 메모 쓰기·수정 (프롬프트)</button>'}
     `;
     body.querySelectorAll('.event-list-item').forEach(el=>{
       el.addEventListener('click', ()=>{ state.ui.eventId = el.dataset.id; state.ui.view='detail'; renderPanel(); });
     });
-    if(!state.readOnly) document.getElementById('btnAddMore').addEventListener('click', focusPromptForDate);
+    if(!state.readOnly){
+      const bm = document.getElementById('btnAddMore');
+      if(bm) bm.addEventListener('click', focusPromptForDate);
+      const bmp = document.getElementById('btnMemoPrompt');
+      if(bmp) bmp.addEventListener('click', ()=>{ setMemoTarget(dateKey); focusPromptForDate(); });
+    }
+    renderDayNoteView(dateKey);
     return;
   }
 
@@ -1559,6 +1589,23 @@ function renderDocs(ev){
   wrap.innerHTML = ev.docs.map(d=>`<span class="doc-chip">📎 ${escapeHtml(d.name)}</span>`).join('');
 }
 
+function renderDayNoteView(dateKey){
+  const el = document.getElementById('dayNoteView');
+  if(!el) return;
+  const note = state.dayNotes[dateKey] || { text:'', photos:[] };
+  const hasText = note.text && note.text.trim();
+  const hasPhoto = note.photos && note.photos.length;
+  el.innerHTML = `
+    ${hasText ? `<div class="detail-memo" style="white-space:pre-wrap;">${escapeHtml(note.text)}</div>` : (hasPhoto ? '' : '<p class="empty-hint">아직 메모가 없어요.</p>')}
+    <div class="photo-row" id="notephotoRow"></div>
+  `;
+  const row = document.getElementById('notephotoRow');
+  if(hasPhoto){
+    row.innerHTML = note.photos.map(p=>`<div class="polaroid"><div class="tape"></div><img src="${p.dataUrl}"></div>`).join('');
+    row.querySelectorAll('.polaroid img').forEach(img=>{ img.style.cursor='zoom-in'; img.addEventListener('click', ()=> openLightbox(img.src)); });
+  }
+}
+
 async function classifyPhoto(ev, photoId, btnEl){
   const p = ev.photos.find(x=>x.id===photoId);
   if(!p) return;
@@ -1664,6 +1711,7 @@ function focusPromptForDate(){
 
 function setEditTarget(dateKey, ev){
   if(state.readOnly) return;
+  state.memoTarget = null;
   state.editTarget = { date: dateKey, id: ev.id, title: ev.title };
   renderEditBanner();
 }
@@ -1671,11 +1719,27 @@ function clearEditTarget(){
   state.editTarget = null;
   renderEditBanner();
 }
+function setMemoTarget(dateKey){
+  if(state.readOnly) return;
+  state.editTarget = null;
+  state.memoTarget = dateKey;
+  renderEditBanner();
+}
+function clearMemoTarget(){
+  state.memoTarget = null;
+  renderEditBanner();
+}
 function renderEditBanner(){
   const banner = document.getElementById('editBanner');
   const btn = document.getElementById('btnGenerate');
   if(!banner) return;
-  if(state.editTarget){
+  if(state.memoTarget){
+    banner.classList.remove('hidden');
+    banner.innerHTML = '📝 <b>' + fmtDateLabel(state.memoTarget) + '</b> 메모 작성 중 — 프롬프트 내용이 이 날의 메모로 저장돼요. <button type="button" id="btnClearMemo">✕ 해제</button>';
+    const c = document.getElementById('btnClearMemo');
+    if(c) c.addEventListener('click', clearMemoTarget);
+    if(btn) btn.textContent = '메모 저장';
+  } else if(state.editTarget){
     banner.classList.remove('hidden');
     banner.innerHTML = '✏️ <b>' + escapeHtml(state.editTarget.title||'선택한 일정') + '</b> 수정 중 — 프롬프트 내용으로 이 일정을 수정합니다. <button type="button" id="btnClearEdit">✕ 해제(새 일정)</button>';
     const c = document.getElementById('btnClearEdit');
@@ -1792,12 +1856,63 @@ async function editEventFromPrompt(text){
   renderEditBanner();
 }
 
+async function memoFromPrompt(text){
+  const ta = document.getElementById('promptInput');
+  const btn = document.getElementById('btnGenerate');
+  const status = document.getElementById('promptStatus');
+  const dateKey = state.memoTarget;
+  const cur = state.dayNotes[dateKey] || { text:'', photos:[] };
+
+  btn.disabled = true;
+  btn.textContent = '메모 저장 중...';
+  status.textContent = '';
+  status.className = 'prompt-status';
+
+  let newText = cur.text || '';
+  try{
+    if(text){
+      const prompt = '아래는 특정 날짜의 자유 메모(줄글)입니다. 사용자의 요청을 반영해 수정된 메모 "본문만" 출력하세요. 설명·인사말·따옴표 없이 메모 본문 그대로 출력하고, 사용자가 삭제/비우기를 요청하면 아무것도 출력하지 마세요(완전히 빈 응답).\n\n기존 메모:\n"""\n' + (cur.text||'') + '\n"""\n\n사용자 요청:\n"""\n' + text + '\n"""';
+      const response = await fetch("/api/claude", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:2000, messages:[{ role:"user", content: prompt }] })
+      });
+      const data = await response.json();
+      if(!response.ok || data.error){ throw new Error('API 오류: ' + (data.error?.message || ('status '+response.status))); }
+      newText = (data.content||[]).map(b=>b.text||'').join('').trim();
+    }
+
+    const newPhotos = (cur.photos||[]).concat(pendingPhotos.map(p=>({ id:newId(), dataUrl:p.dataUrl })));
+
+    if(!newText.trim() && newPhotos.length === 0){
+      delete state.dayNotes[dateKey];
+      await dbDeleteDayNote(dateKey);
+      status.textContent = '메모를 삭제했어요.';
+    } else {
+      state.dayNotes[dateKey] = { text: newText, photos: newPhotos };
+      await dbSaveDayNote(dateKey, state.dayNotes[dateKey]);
+      status.textContent = '메모를 저장했어요.';
+    }
+    status.className = 'prompt-status ok';
+    ta.value = '';
+    pendingPhotos = [];
+    renderPending();
+    clearMemoTarget();
+  }catch(err){
+    console.error('memo error:', err);
+    status.textContent = err.message || '메모 저장 중 문제가 생겼어요.';
+    status.className = 'prompt-status error';
+  }
+  btn.disabled = false;
+  renderEditBanner();
+}
+
 async function generateFromPrompt(){
   const ta = document.getElementById('promptInput');
   const btn = document.getElementById('btnGenerate');
   const status = document.getElementById('promptStatus');
   const text = ta.value.trim();
   if(!text && pendingPhotos.length === 0){ ta.focus(); return; }
+  if(state.memoTarget){ return memoFromPrompt(text); }
   if(state.editTarget){ return editEventFromPrompt(text); }
 
   btn.disabled = true;
