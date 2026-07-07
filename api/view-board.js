@@ -31,7 +31,7 @@ export default async function handler(req, res) {
   try {
     const { data: board, error: boardErr } = await admin
       .from('boards')
-      .select('id, title, share_code')
+      .select('id, title, share_code, kind')
       .eq('share_code', code.trim())
       .single();
 
@@ -53,11 +53,17 @@ export default async function handler(req, res) {
       .select('note_date, text, photos')
       .eq('board_id', board.id);
 
-    // 프론트에는 board id/title과 events, day_notes만 반환 (민감 정보 제외)
+    const { data: subjects } = await admin
+      .from('subjects')
+      .select('id, name, sort_order, worksheets')
+      .eq('board_id', board.id);
+
+    // 프론트에는 board id/title/kind과 events, day_notes, subjects만 반환 (민감 정보 제외)
     return res.status(200).json({
-      board: { id: board.id, title: board.title },
+      board: { id: board.id, title: board.title, kind: board.kind },
       events: events || [],
-      day_notes: notes || []
+      day_notes: notes || [],
+      subjects: subjects || []
     });
   } catch (err) {
     console.error('view-board error:', err);
