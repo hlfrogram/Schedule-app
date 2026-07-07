@@ -977,9 +977,9 @@ function renderManagePanel(){
       : m.type==='editor' ? '공유 일정표 (편집가능)'
       : '보기 전용 일정표';
     const title = escapeHtml(m.title || '일정표');
-    const actions = (m.type==='owner')
-      ? `<button class="mi-edit" data-id="${m.board_id}" title="이름 변경">✏️</button>`
-      : `<button class="mi-del" data-id="${m.board_id}" data-type="${m.type}">삭제</button>`;
+    const editBtn = `<button class="mi-edit" data-id="${m.board_id}" title="이름 변경">✏️</button>`;
+    const delBtn = `<button class="mi-del" data-id="${m.board_id}" data-type="${m.type}">삭제</button>`;
+    const actions = (m.type==='owner') ? (editBtn + delBtn) : delBtn;
     return `
       <div class="manage-item ${isCurrent?'current':''}">
         <div class="mi-main" data-switch="${m.board_id}">
@@ -991,7 +991,7 @@ function renderManagePanel(){
   }).join('');
   body.innerHTML = `
     <div class="panel-heading">📋 일정표 관리</div>
-    <p class="empty-hint" style="margin-bottom:12px;">클릭하면 그 일정표로 전환돼요. 내 일정표는 ✏️로 이름을 바꿀 수 있어요.</p>
+    <p class="empty-hint" style="margin-bottom:12px;">클릭하면 그 일정표로 전환돼요. 내 일정표는 ✏️ 이름 변경 · 삭제가 가능해요.</p>
     ${rows}
     <button class="add-card-btn" id="btnCreateBoard" style="margin-top:6px;">+ 새 개인 일정표 만들기</button>
   `;
@@ -1000,8 +1000,12 @@ function renderManagePanel(){
   });
   body.querySelectorAll('.mi-del').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
-      if(!confirm('이 일정표를 목록에서 삭제하시겠습니까?')) return;
-      await deleteBoardFromList(btn.dataset.id, btn.dataset.type);
+      const type = btn.dataset.type;
+      const msg = type==='owner'
+        ? '이 개인 일정표를 삭제하면 안의 모든 일정이 사라지고, 공유받은 구성원도 접근할 수 없게 돼요. 삭제할까요?'
+        : '이 일정표를 목록에서 삭제하시겠습니까?';
+      if(!confirm(msg)) return;
+      await deleteBoardFromList(btn.dataset.id, type);
     });
   });
   body.querySelectorAll('.mi-edit').forEach(btn=>{
@@ -1042,7 +1046,10 @@ async function renameBoard(boardId){
   if(state.ui.view === 'manage') renderManagePanel();
 }
 async function deleteBoardFromList(boardId, type){
-  if(type === 'editor'){
+  if(type === 'owner'){
+    const { error } = await sb.from('boards').delete().eq('id', boardId);
+    if(error){ alert('삭제 실패: '+error.message); return; }
+  } else if(type === 'editor'){
     const { error } = await sb.from('board_members').delete()
       .eq('board_id', boardId).eq('user_id', state.myUserId);
     if(error){ alert('삭제 실패: '+error.message); return; }
