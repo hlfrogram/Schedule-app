@@ -634,6 +634,10 @@
     background:none; border:1px solid var(--rust); color:var(--rust);
     border-radius:6px; padding:4px 8px; font-size:10.5px; cursor:pointer; margin-left:8px;
   }
+  .manage-item .mi-edit{
+    background:none; border:1px solid var(--paper-edge); color:var(--ink-soft);
+    border-radius:6px; padding:4px 9px; font-size:12px; cursor:pointer; margin-left:8px;
+  }
 
   /* 모바일 대응 */
   @media (max-width:480px){
@@ -973,21 +977,23 @@ function renderManagePanel(){
       : m.type==='editor' ? '공유 일정표 (편집가능)'
       : '보기 전용 일정표';
     const title = escapeHtml(m.title || '일정표');
-    const delBtn = (m.type==='owner') ? '' :
-      `<button class="mi-del" data-id="${m.board_id}" data-type="${m.type}">삭제</button>`;
+    const actions = (m.type==='owner')
+      ? `<button class="mi-edit" data-id="${m.board_id}" title="이름 변경">✏️</button>`
+      : `<button class="mi-del" data-id="${m.board_id}" data-type="${m.type}">삭제</button>`;
     return `
       <div class="manage-item ${isCurrent?'current':''}">
         <div class="mi-main" data-switch="${m.board_id}">
           <div class="mi-title">${title}${isCurrent?' ✓':''}</div>
           <div class="mi-role">${roleLabel}</div>
         </div>
-        ${delBtn}
+        ${actions}
       </div>`;
   }).join('');
   body.innerHTML = `
     <div class="panel-heading">📋 일정표 관리</div>
-    <p class="empty-hint" style="margin-bottom:14px;">클릭하면 그 일정표로 전환돼요. (내 일정표는 삭제 불가)</p>
+    <p class="empty-hint" style="margin-bottom:12px;">클릭하면 그 일정표로 전환돼요. 내 일정표는 ✏️로 이름을 바꿀 수 있어요.</p>
     ${rows}
+    <button class="add-card-btn" id="btnCreateBoard" style="margin-top:6px;">+ 새 개인 일정표 만들기</button>
   `;
   body.querySelectorAll('[data-switch]').forEach(el=>{
     el.addEventListener('click', ()=> switchBoard(el.dataset.switch));
@@ -998,6 +1004,42 @@ function renderManagePanel(){
       await deleteBoardFromList(btn.dataset.id, btn.dataset.type);
     });
   });
+  body.querySelectorAll('.mi-edit').forEach(btn=>{
+    btn.addEventListener('click', ()=> renameBoard(btn.dataset.id));
+  });
+  const bc = document.getElementById('btnCreateBoard');
+  if(bc) bc.addEventListener('click', createPersonalBoard);
+}
+
+// 새 개인 일정표(소유자) 만들기
+async function createPersonalBoard(){
+  const name = prompt('새 일정표 이름을 입력하세요:', '내 일정표');
+  if(name === null) return;
+  const title = name.trim() || '내 일정표';
+  const code = randCode();
+  const invite = randCode();
+  const { data: created, error: cErr } = await sb.from('boards')
+    .insert({ owner_id: state.myUserId, title, share_code: code, invite_code: invite })
+    .select().single();
+  if(cErr){ alert('생성 실패: '+cErr.message); return; }
+  const { error: mErr } = await sb.from('board_members')
+    .insert({ board_id: created.id, user_id: state.myUserId, role: 'owner' });
+  if(mErr){ alert('구성원 등록 실패: '+mErr.message); return; }
+  await loadMemberBoard(created.id);
+  if(state.ui.view === 'manage') renderManagePanel();
+}
+
+// 개인 일정표 이름 변경
+async function renameBoard(boardId){
+  const m = (state.myBoards||[]).find(b=>b.board_id===boardId);
+  const name = prompt('일정표 이름을 입력하세요:', (m && m.title) || '내 일정표');
+  if(name === null) return;
+  const title = name.trim();
+  if(!title) return;
+  const { error } = await sb.from('boards').update({ title }).eq('id', boardId);
+  if(error){ alert('이름 변경 실패: '+error.message); return; }
+  await loadMemberBoard(state.boardId);
+  if(state.ui.view === 'manage') renderManagePanel();
 }
 async function deleteBoardFromList(boardId, type){
   if(type === 'editor'){
