@@ -582,6 +582,7 @@
   }
   .role-chip.owner{background:var(--ochre-soft); color:var(--ochre);}
   .role-chip.editor{background:var(--teal-soft); color:var(--teal);}
+  .role-chip.viewer{background:var(--paper-line); color:var(--ink-soft);}
   .member-kick{
     background:none; border:1px solid var(--rust); color:var(--rust);
     border-radius:6px; padding:3px 8px; font-size:10.5px; cursor:pointer; margin-left:8px;
@@ -701,6 +702,7 @@
     <div class="cal-header">
       <div class="cal-title" id="calTitle"></div>
       <div class="nav-btns">
+        <button class="today-btn" id="btnRefresh" title="새로고침">🔄</button>
         <button class="today-btn" id="btnToday">오늘</button>
         <button id="btnPrev">◀</button>
         <button id="btnNext">▶</button>
@@ -760,6 +762,7 @@ const state = {
   shareCode: null,
   inviteCode: null,
   members: [],
+  viewers: [],
   myUserId: null,
   authFlow: 'create', // 'create' | 'join' — 로그인 버튼을 눌렀을 때 목적
   editTarget: null, // {date, id, title} — 선택된 일정 (있으면 프롬프트가 수정, 없으면 새로 추가)
@@ -924,6 +927,16 @@ async function switchBoard(boardId){
   if(!m) return;
   closePanel();
   await activateBoard(m);
+}
+
+// 현재 일정표 데이터만 다시 불러오기 (사이트 전체 새로고침 없이 최신 반영)
+async function refreshBoard(){
+  const m = (state.myBoards||[]).find(b=>b.board_id===state.boardId);
+  const btn = document.getElementById('btnRefresh');
+  if(btn){ btn.disabled = true; btn.textContent = '⏳'; }
+  if(m){ await activateBoard(m); }
+  else { await loadMemberBoard(state.boardId); }
+  if(btn){ btn.disabled = false; btn.textContent = '🔄'; }
 }
 
 // 로그인 성공 후: 내 일정표 로드 + URL의 join/code 처리
@@ -1201,6 +1214,8 @@ async function loadGroupMembers(){
   const { data, error } = await sb.rpc('get_board_members', { p_board_id: state.boardId });
   if(error){ console.error('members load error', error); state.members = []; }
   else state.members = data || [];
+  const { data: vdata } = await sb.rpc('get_board_viewers', { p_board_id: state.boardId });
+  state.viewers = vdata || [];
   if(state.ui.view === 'group') renderPanel();
 }
 
@@ -1230,11 +1245,20 @@ function renderGroupPanel(){
 
   const leaveHtml = !isOwner ? `<button class="group-leave-btn" id="btnLeaveGroup">그룹 나가기</button>` : '';
 
+  const viewersHtml = (state.viewers||[]).map(v=>{
+    const mine = v.user_id === state.myUserId;
+    return `<li class="member-row"><span class="member-email">${escapeHtml(v.email)}${mine ? ' (나)' : ''}</span><span class="role-chip viewer">보기 전용</span></li>`;
+  }).join('');
+  const viewerSection = viewersHtml
+    ? `<div class="section-label" style="margin:16px 0 8px;"><span class="dot" style="background:var(--ink-soft)"></span>보기 전용으로 보는 사람</div><ul class="member-list">${viewersHtml}</ul>`
+    : '';
+
   document.getElementById('panelBody').innerHTML = `
     <div class="group-panel">
       <h2>👥 그룹 구성원</h2>
       ${inviteBoxHtml}
       <ul class="member-list">${membersHtml || '<li class="member-row">불러오는 중...</li>'}</ul>
+      ${viewerSection}
       ${leaveHtml}
       <div class="group-status" id="groupStatus"></div>
     </div>`;
@@ -2044,6 +2068,7 @@ document.getElementById('btnToday').addEventListener('click', ()=>{
   state.cursor = new Date();
   renderCalendar();
 });
+document.getElementById('btnRefresh').addEventListener('click', refreshBoard);
 document.getElementById('panelClose').addEventListener('click', closePanel);
 document.getElementById('overlay').addEventListener('click', closePanel);
 
