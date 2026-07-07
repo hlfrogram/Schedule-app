@@ -641,7 +641,7 @@
   }
 
   .tabs{ display:flex; gap:4px; align-items:flex-end; }
-  .cover-tab{ cursor:pointer; }
+  .cover-tab{ cursor:pointer; justify-content:center; min-width:150px; }
   .cover-tab.inactive{ background:rgba(255,255,255,0.10); box-shadow:none; }
   .cover-tab.inactive h1{ color:rgba(255,255,255,0.6); }
   .cover-tab.inactive .pin-dot{ opacity:0.4; }
@@ -655,7 +655,11 @@
   .subject-file .sf-name{ margin-top:6px; font-size:13px; font-weight:500; word-break:break-all; }
   .subject-file .sf-count{ font-size:10.5px; color:var(--ink-soft); margin-top:2px; }
   .worksheet-row{ display:flex; flex-direction:column; gap:12px; }
-  .worksheet-item img{ width:100%; border-radius:8px; border:1px solid var(--paper-edge); cursor:zoom-in; display:block; }
+  .worksheet-item{ display:flex; align-items:flex-start; gap:8px; }
+  .worksheet-item.dragging{ opacity:0.35; }
+  .worksheet-item.drop-target img{ outline:2px dashed var(--teal); outline-offset:2px; }
+  .ws-handle{ flex:0 0 auto; cursor:grab; font-size:18px; color:var(--ink-soft); padding:2px 0; user-select:none; line-height:1.4; }
+  .worksheet-item img{ flex:1; min-width:0; width:100%; border-radius:8px; border:1px solid var(--paper-edge); cursor:zoom-in; display:block; }
 
   /* 모바일 대응 */
   @media (max-width:480px){
@@ -696,7 +700,7 @@
 
 <div id="app" class="hidden">
   <div class="tabs">
-    <div class="cover-tab" id="tabCalendar"><span class="pin-dot"></span><h1>일정 핀보드</h1></div>
+    <div class="cover-tab" id="tabCalendar"><span class="pin-dot"></span><h1>캘린더</h1></div>
     <div class="cover-tab inactive" id="tabDrive"><span class="pin-dot"></span><h1>파일 드라이브</h1></div>
   </div>
   <div class="board-sheet">
@@ -947,6 +951,11 @@ async function activateBoard(m){
     });
     const data = await res.json();
     if(!res.ok){ alert('조회 오류: '+(data.error?.message||'')); return; }
+    const freshTitle = data.board && data.board.title;
+    if(freshTitle && freshTitle !== m.title){
+      m.title = freshTitle;
+      sb.from('viewer_boards').update({ title: freshTitle }).eq('user_id', state.myUserId).eq('board_id', m.board_id);
+    }
     if(kind === 'drive'){
       state.subjects = sortSubjects(data.subjects||[]);
     } else {
@@ -1094,10 +1103,42 @@ function renderWorksheets(s){
   if(!row) return;
   const ws = s.worksheets || [];
   if(!ws.length){ row.innerHTML = '<p class="empty-hint">아직 학습지가 없어요.</p>'; return; }
-  row.innerHTML = ws.map(w=>`
-    <div class="worksheet-item" data-id="${w.id}"><img src="${w.dataUrl}"></div>`).join('');
+  row.innerHTML = ws.map((w,i)=>`
+    <div class="worksheet-item" data-id="${w.id}" data-idx="${i}" ${state.readOnly?'':'draggable="true"'}>
+      ${state.readOnly?'':'<div class="ws-handle" title="드래그해서 순서 변경">⇅</div>'}
+      <img src="${w.dataUrl}" draggable="false">
+    </div>`).join('');
   row.querySelectorAll('.worksheet-item img').forEach(img=>{
     img.addEventListener('click', ()=> openLightbox(img.src));
+  });
+  if(!state.readOnly) attachWorksheetDrag(row, s);
+}
+
+let wsDragFrom = null;
+function attachWorksheetDrag(row, s){
+  row.querySelectorAll('.worksheet-item').forEach(item=>{
+    item.addEventListener('dragstart', (e)=>{
+      wsDragFrom = parseInt(item.dataset.idx, 10);
+      item.classList.add('dragging');
+      if(e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+    });
+    item.addEventListener('dragend', ()=>{
+      item.classList.remove('dragging');
+      row.querySelectorAll('.worksheet-item').forEach(x=>x.classList.remove('drop-target'));
+    });
+    item.addEventListener('dragover', (e)=>{ e.preventDefault(); item.classList.add('drop-target'); });
+    item.addEventListener('dragleave', ()=>{ item.classList.remove('drop-target'); });
+    item.addEventListener('drop', async (e)=>{
+      e.preventDefault();
+      const toIdx = parseInt(item.dataset.idx, 10);
+      if(wsDragFrom === null || wsDragFrom === toIdx) return;
+      const arr = s.worksheets;
+      const [moved] = arr.splice(wsDragFrom, 1);
+      arr.splice(toIdx, 0, moved);
+      wsDragFrom = null;
+      await dbUpdateSubject(s.id, { worksheets: arr });
+      renderSubjectPanel();
+    });
   });
 }
 
