@@ -194,7 +194,7 @@
   .nav-btns{display:flex; gap:6px;}
   .weekdays{
     display:grid;
-    grid-template-columns:repeat(7,1fr);
+    grid-template-columns:repeat(7,minmax(0,1fr));
     gap:4px;
     margin-bottom:4px;
   }
@@ -209,12 +209,14 @@
   .weekdays div:last-child{ color:#2b62d6; }  /* 토요일 파랑 */
   .grid{
     display:grid;
-    grid-template-columns:repeat(7,1fr);
+    grid-template-columns:repeat(7,minmax(0,1fr));
     gap:4px;
   }
   .day-cell{
     position:relative;
     aspect-ratio:1/0.85;
+    min-width:0;
+    overflow:hidden;
     background:var(--white-note);
     border:1px solid var(--paper-edge);
     border-radius:6px;
