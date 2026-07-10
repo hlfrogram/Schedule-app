@@ -165,6 +165,14 @@
   .prompt-status.error{color:var(--rust);}
   .prompt-status.ok{color:var(--teal);}
   .ai-disclaimer{ font-size:10.5px; color:var(--ink-soft); margin-top:8px; line-height:1.45; }
+  /* 개인정보 업로드 주의 경고문 */
+  .privacy-warn{
+    display:flex; align-items:flex-start; gap:6px;
+    background:#FFF6E5; border:1px solid #F0C36D; color:#7A5A12;
+    border-radius:6px; padding:7px 9px; margin-top:8px;
+    font-size:10.5px; line-height:1.45; word-break:keep-all;
+  }
+  .privacy-warn .pw-icon{ flex:0 0 auto; }
 
   .cal-header{
     display:flex;
@@ -782,6 +790,10 @@
       </div>
       <div class="prompt-status" id="promptStatus"></div>
       <p class="ai-disclaimer">AI가 자동으로 정리한 일정이라 실수가 있을 수 있어요. 날짜, 시간, 준비물을 한 번 더 확인해주세요.</p>
+      <div class="privacy-warn">
+        <span class="pw-icon">⚠️</span>
+        <span>개인정보나 민감한 정보가 담긴 사진과 글은 올리지 않았는지 확인해주세요. 첨부한 내용은 함께 쓰는 구성원에게 공유됩니다.</span>
+      </div>
     </div>
     </div>
 
@@ -789,6 +801,10 @@
       <div class="drive-header">
         <div class="dh-title">과목 파일</div>
         <button class="today-btn" id="btnRefreshDrive" title="새로고침">🔄</button>
+      </div>
+      <div class="privacy-warn" id="drivePrivacyWarn" style="margin-top:0; margin-bottom:12px;">
+        <span class="pw-icon">⚠️</span>
+        <span>개인정보나 민감한 정보가 담긴 사진과 글은 올리지 않았는지 확인해주세요. 첨부한 내용은 함께 쓰는 구성원에게 공유됩니다.</span>
       </div>
       <div class="subjects-grid" id="subjectsGrid"></div>
       <button class="add-card-btn" id="btnAddSubject" style="margin-top:10px;">+ 과목 추가</button>
@@ -1086,6 +1102,9 @@ function renderDrive(){
   const grid = document.getElementById('subjectsGrid');
   const addBtn = document.getElementById('btnAddSubject');
   if(addBtn) addBtn.classList.toggle('hidden', state.readOnly);
+  // 보기 전용은 업로드가 불가하므로 경고문도 숨김
+  const warn = document.getElementById('drivePrivacyWarn');
+  if(warn) warn.classList.toggle('hidden', state.readOnly);
   if(!grid) return;
   if(!state.subjects.length){
     // grid 안이라 좁은 칸에 갇히지 않도록 전체 폭(1/-1) 사용
@@ -1745,13 +1764,13 @@ function renderPanel(){
             <div class="t">${escapeHtml(e.title)}</div>
             <div class="m">${e.time||''} · ${escapeHtml(e.location||'')}</div>
           </div>
-          ${state.readOnly ? '' : `<button class="ev-del-btn" data-del="${e.id}" title="일정 삭제">🗑</button>`}
+          ${state.readOnly ? '' : `<button class="btn-del ev-del-btn" data-del="${e.id}" title="일정 삭제">삭제</button>`}
         </div>`).join('') : '<p class="empty-hint" style="margin-bottom:8px;">등록된 일정이 없어요.</p>'}
-      ${state.readOnly ? '' : '<button class="add-card-btn" id="btnAddMore">+ 이 날짜에 일정 추가하기</button>'}
+      ${state.readOnly ? '' : '<button class="add-card-btn" id="btnAddMore">✏️ 이 날의 일정 수정</button>'}
 
       <div class="section-label" style="margin-top:24px;"><span class="dot" style="background:var(--teal)"></span>이 날의 메모</div>
       <div id="dayNoteView"></div>
-      ${state.readOnly ? '' : '<button class="add-card-btn" id="btnMemoPrompt">✏️ 이 날의 메모 쓰기·수정 (프롬프트)</button>'}
+      ${state.readOnly ? '' : '<button class="add-card-btn" id="btnMemoPrompt">✏️ 이 날의 메모 수정</button>'}
     `;
     body.querySelectorAll('.event-list-item').forEach(el=>{
       el.addEventListener('click', ()=>{ state.ui.eventId = el.dataset.id; state.ui.view='detail'; renderPanel(); });
@@ -1803,7 +1822,7 @@ function renderPanel(){
       <div class="panel-heading">${escapeHtml(ev.title)}</div>
       <div class="detail-meta">${ev.time?ev.time+' · ':''}${escapeHtml(ev.location||'')}</div>
       ${ev.memo?`<div class="detail-memo">${escapeHtml(ev.memo)}</div>`:''}
-      ${state.readOnly ? '' : '<button class="add-card-btn" id="btnEditByPrompt" style="margin-bottom:16px;">✏️ 이 일정을 프롬프트로 수정하기</button>'}
+      ${state.readOnly ? '' : '<button class="add-card-btn" id="btnEditByPrompt" style="margin-bottom:16px;">✏️ 일정 수정</button>'}
 
       <div class="section-label"><span class="dot" style="background:var(--teal)"></span>사진</div>
       <div class="photo-row" id="photoRow"></div>
@@ -1820,7 +1839,7 @@ function renderPanel(){
       <div class="section-label"><span class="dot" style="background:var(--rust)"></span>안내 자료</div>
       <div id="docRow"></div>
       ${state.readOnly ? '' : '<button class="add-card-btn" id="btnAddDoc">+ 자료 추가</button>'}
-      ${state.readOnly ? '' : '<button class="delete-event-btn" id="btnDeleteEvent">🗑 이 일정 삭제</button>'}
+      ${state.readOnly ? '' : '<button class="btn-del delete-event-btn" id="btnDeleteEvent">이 일정 삭제</button>'}
     `;
     if(evs.length>1) document.getElementById('btnBack').addEventListener('click', ()=>{ state.ui.view='list'; renderPanel(); });
 
@@ -2003,14 +2022,25 @@ function renderDayNoteView(dateKey){
   const note = state.dayNotes[dateKey] || { text:'', photos:[] };
   const hasText = note.text && note.text.trim();
   const hasPhoto = note.photos && note.photos.length;
+  const canDelete = (hasText || hasPhoto) && !state.readOnly;
   el.innerHTML = `
     ${hasText ? `<div class="detail-memo" style="white-space:pre-wrap;">${escapeHtml(note.text)}</div>` : (hasPhoto ? '' : '<p class="empty-hint">아직 메모가 없어요.</p>')}
     <div class="photo-row" id="notephotoRow"></div>
+    ${canDelete ? '<button class="btn-del" id="btnDeleteNote" style="margin-top:10px;">메모 삭제</button>' : ''}
   `;
   const row = document.getElementById('notephotoRow');
   if(hasPhoto){
     row.innerHTML = note.photos.map(p=>`<div class="polaroid"><div class="tape"></div><img src="${p.dataUrl}"></div>`).join('');
     row.querySelectorAll('.polaroid img').forEach(img=>{ img.style.cursor='zoom-in'; img.addEventListener('click', ()=> openLightbox(img.src)); });
+  }
+  if(canDelete){
+    document.getElementById('btnDeleteNote').addEventListener('click', async ()=>{
+      if(!confirm('이 날의 메모를 삭제할까요? 되돌릴 수 없어요.')) return;
+      delete state.dayNotes[dateKey];
+      await dbDeleteDayNote(dateKey);
+      if(state.memoTarget === dateKey) clearMemoTarget();
+      renderDayNoteView(dateKey);
+    });
   }
 }
 
@@ -2165,7 +2195,7 @@ function renderEditBanner(){
     if(btn) btn.textContent = '메모 저장';
   } else if(state.editTarget){
     banner.classList.remove('hidden');
-    banner.innerHTML = '✏️ <b>' + escapeHtml(state.editTarget.title||'선택한 일정') + '</b> 수정 중 — 프롬프트 내용으로 이 일정을 수정합니다. <button type="button" id="btnClearEdit">✕ 해제(새 일정)</button>';
+    banner.innerHTML = '✏️ <b>' + escapeHtml(state.editTarget.title||'선택한 일정') + '</b> 수정 중 — 내용 수정, 날짜 이동, 삭제까지 말로 요청할 수 있어요. <button type="button" id="btnClearEdit">✕ 해제(새 일정)</button>';
     const c = document.getElementById('btnClearEdit');
     if(c) c.addEventListener('click', clearEditTarget);
     if(btn) btn.textContent = '일정 수정';
@@ -2206,9 +2236,13 @@ async function editEventFromPrompt(text){
   const prompt = '오늘 날짜는 ' + todayIso + ' 입니다.\n' +
     '아래는 사용자가 수정하려는 기존 일정입니다(JSON):\n' +
     JSON.stringify(cur) + '\n\n' +
-    '사용자의 수정 요청:\n"""\n' + text + '\n"""\n\n' +
-    '이 요청을 반영해 수정된 일정 하나를 아래 JSON 형식으로만 출력하세요. 요청에 언급되지 않은 항목은 기존 값을 그대로 유지하세요. 인사말·설명·코드블록 표시 없이 순수 JSON만 출력:\n' +
-    '{"date":"YYYY-MM-DD","title":"...","time":"HH:MM 또는 빈 문자열","location":"...","memo":"...","checklist":["..."]}';
+    '사용자의 요청:\n"""\n' + text + '\n"""\n\n' +
+    '요청의 의도를 판단해 action을 정하세요.\n' +
+    '- action "delete": 사용자가 이 일정을 없애달라/취소해달라/삭제해달라고 하는 경우\n' +
+    '- action "update": 그 외 모든 경우 (내용 수정, 날짜·시간 이동 포함). 날짜를 옮기는 요청이면 date를 바꾸세요.\n\n' +
+    '아래 JSON 형식으로만 출력하세요. 요청에 언급되지 않은 항목은 기존 값을 그대로 유지하세요. 인사말·설명·코드블록 표시 없이 순수 JSON만 출력:\n' +
+    '{"action":"update 또는 delete","date":"YYYY-MM-DD","title":"...","time":"HH:MM 또는 빈 문자열","location":"...","memo":"...","checklist":["..."]}\n' +
+    'action이 "delete"이면 date 외 나머지 항목은 생략해도 됩니다.';
 
   let rawForDebug = '';
   try{
@@ -2237,6 +2271,28 @@ async function editEventFromPrompt(text){
     const e = parsed.events ? parsed.events[0] : parsed;
     if(!e){ throw new Error('수정 결과를 이해하지 못했어요.'); }
 
+    // AI가 삭제로 판단한 경우 — 되돌릴 수 없으므로 사용자 확인을 한 번 더 받는다
+    if(e.action === 'delete'){
+      if(!confirm('AI가 "' + (targetEv.title||'선택한 일정') + '" 일정을 삭제하려고 해요. 삭제할까요? 되돌릴 수 없어요.')){
+        status.textContent = '삭제를 취소했어요.';
+        status.className = 'prompt-status';
+        btn.disabled = false;
+        renderEditBanner();
+        return;
+      }
+      await dbDeleteEvent(targetEv);
+      state.events[target.date] = (state.events[target.date]||[]).filter(x=>x.id!==targetEv.id);
+      status.textContent = '일정을 삭제했어요.';
+      status.className = 'prompt-status ok';
+      ta.value = '';
+      clearEditTarget();
+      closePanel();
+      renderCalendar();
+      btn.disabled = false;
+      renderEditBanner();
+      return;
+    }
+
     const newDate = e.date || target.date;
     targetEv.title = e.title || targetEv.title;
     targetEv.time = (e.time === null || e.time === undefined) ? targetEv.time : e.time;
@@ -2264,7 +2320,9 @@ async function editEventFromPrompt(text){
       checklist: targetEv.checklist
     });
 
-    status.textContent = '일정을 수정했어요.';
+    status.textContent = (newDate !== target.date)
+      ? ('일정을 ' + fmtDateLabel(newDate) + '로 옮겼어요.')
+      : '일정을 수정했어요.';
     status.className = 'prompt-status ok';
     ta.value = '';
     clearEditTarget();
