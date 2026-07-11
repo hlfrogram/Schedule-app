@@ -482,7 +482,7 @@
   }
 
   /* 이 날의 일정 목록 항목 */
-  .event-list-row{ display:flex; align-items:stretch; gap:6px; margin-bottom:10px; }
+  .event-list-row{ display:flex; align-items:center; gap:6px; margin-bottom:10px; }
   .event-list-row .event-list-item{ flex:1; margin-bottom:0; }
 
   /* 삭제 버튼 공통 스타일 (일정표 관리 삭제 버튼 기준) */
@@ -2026,7 +2026,7 @@ function renderDayNoteView(dateKey){
   el.innerHTML = `
     ${hasText ? `<div class="detail-memo" style="white-space:pre-wrap;">${escapeHtml(note.text)}</div>` : (hasPhoto ? '' : '<p class="empty-hint">아직 메모가 없어요.</p>')}
     <div class="photo-row" id="notephotoRow"></div>
-    ${canDelete ? '<button class="btn-del" id="btnDeleteNote" style="margin-top:10px;">메모 삭제</button>' : ''}
+    ${canDelete ? '<div style="display:flex; justify-content:flex-end; margin-top:10px;"><button class="btn-del" id="btnDeleteNote">메모 삭제</button></div>' : ''}
   `;
   const row = document.getElementById('notephotoRow');
   if(hasPhoto){
