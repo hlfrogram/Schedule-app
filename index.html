@@ -684,6 +684,13 @@
   .manage-item .mi-title{ font-size:13px; font-weight:600; }
   .manage-item .mi-role{ font-size:10.5px; color:var(--ink-soft); margin-top:2px; font-family:'IBM Plex Mono',monospace; }
   .manage-item .btn-del, .manage-item .btn-edit{ margin-left:8px; }
+  .mi-start{
+    margin-top:7px; font-family:'IBM Plex Mono',monospace; font-size:10.5px;
+    background:none; border:1px solid var(--paper-edge); color:var(--ink-soft);
+    border-radius:6px; padding:3px 9px; cursor:pointer;
+  }
+  .mi-start:hover{ border-color:var(--teal); color:var(--teal); }
+  .mi-start.current{ border-color:var(--teal); color:var(--teal); background:var(--teal-soft); cursor:default; }
 
   .tabs{ display:flex; gap:4px; align-items:flex-end; }
   .cover-tab{ cursor:pointer; justify-content:center; min-width:150px; }
@@ -1280,7 +1287,10 @@ function addWorksheet(subjectId){
 
 // 로그인 성공 후: 내 일정표 로드 + URL의 join/code 처리
 async function afterLogin(){
-  await loadMemberBoard();
+  // 사용자가 지정한 '시작 화면' 일정표가 있으면 그걸 먼저 연다 (브라우저에 저장됨)
+  let startId;
+  try{ const { data:{ user } } = await sb.auth.getUser(); startId = user ? localStorage.getItem('startBoard:'+user.id) : null; }catch(e){ startId = null; }
+  await loadMemberBoard(startId || undefined);
   const params = new URLSearchParams(location.search);
   const joinCode = params.get('join');
   const viewCode = params.get('code');
@@ -1338,8 +1348,10 @@ function renderManagePanel(){
   const kind = state.tab;
   const kindWord = kind==='drive' ? '드라이브' : '일정표';
   const list = (state.myBoards||[]).filter(b=> (b.kind||'calendar')===kind);
+  const startId = state.myUserId ? localStorage.getItem('startBoard:'+state.myUserId) : null;
   const rows = list.map(m=>{
     const isCurrent = m.board_id === state.boardId;
+    const isStart = m.board_id === startId;
     const roleLabel = m.type==='owner' ? ('내 '+kindWord+' (소유자·편집가능)')
       : m.type==='editor' ? ('공유 '+kindWord+' (편집가능)')
       : ('보기 전용 '+kindWord);
@@ -1347,11 +1359,15 @@ function renderManagePanel(){
     const editBtn = `<button class="btn-edit" data-id="${m.board_id}" title="이름 변경">✏️</button>`;
     const delBtn = `<button class="btn-del" data-id="${m.board_id}" data-type="${m.type}">삭제</button>`;
     const actions = (m.type==='owner') ? (editBtn + delBtn) : delBtn;
+    const startBtn = isStart
+      ? '<button class="mi-start current" disabled>🏠 현재 시작 화면</button>'
+      : `<button class="mi-start" data-start="${m.board_id}">🏠 시작 화면으로 설정</button>`;
     return `
       <div class="manage-item ${isCurrent?'current':''}">
         <div class="mi-main" data-switch="${m.board_id}">
           <div class="mi-title">${title}${isCurrent?' ✓':''}</div>
           <div class="mi-role">${roleLabel}</div>
+          ${startBtn}
         </div>
         ${actions}
       </div>`;
@@ -1364,6 +1380,13 @@ function renderManagePanel(){
   `;
   body.querySelectorAll('[data-switch]').forEach(el=>{
     el.addEventListener('click', ()=> switchBoard(el.dataset.switch));
+  });
+  body.querySelectorAll('.mi-start[data-start]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      if(state.myUserId) localStorage.setItem('startBoard:'+state.myUserId, btn.dataset.start);
+      renderManagePanel();
+    });
   });
   body.querySelectorAll('.btn-del').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
@@ -1710,6 +1733,10 @@ function renderCalendar(){
 }
 
 function escapeHtml(s){ const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+// 시간·장소 중 있는 것만 ' · '로 이어붙임 (한쪽만/없으면 점이 홀로 뜨지 않도록)
+function metaLine(time, loc){
+  return [time, loc].map(x => (x||'').trim()).filter(Boolean).join(' · ');
+}
 // 예전 기본 이름으로 만들어진 보드는 화면에 '내 일정표'로 표시
 function displayBoardTitle(t){
   return (t === '내 일정 핀보드' || t === '내 캘린더') ? '내 일정표' : t;
@@ -1775,7 +1802,7 @@ function renderPanel(){
         <div class="event-list-item">
           <div class="ev-main" data-id="${e.id}">
             <div class="t">${escapeHtml(e.title)}</div>
-            <div class="m">${e.time||''} · ${escapeHtml(e.location||'')}</div>
+            ${metaLine(e.time, e.location) ? `<div class="m">${escapeHtml(metaLine(e.time, e.location))}</div>` : ''}
           </div>
           ${state.readOnly ? '' : `<button class="btn-del ev-del-btn" data-del="${e.id}" title="일정 삭제">삭제</button>`}
         </div>`).join('') : '<p class="empty-hint" style="margin-bottom:8px;">등록된 일정이 없어요.</p>'}
@@ -1833,7 +1860,7 @@ function renderPanel(){
       <div class="panel-date">${fmtDateLabel(dateKey)}</div>
       ${evs.length>1?'<button class="back-link" id="btnBack">← 이 날의 다른 일정 보기</button>':''}
       <div class="panel-heading">${escapeHtml(ev.title)}</div>
-      <div class="detail-meta">${ev.time?ev.time+' · ':''}${escapeHtml(ev.location||'')}</div>
+      ${metaLine(ev.time, ev.location) ? `<div class="detail-meta">${escapeHtml(metaLine(ev.time, ev.location))}</div>` : ''}
       ${ev.memo?`<div class="detail-memo">${escapeHtml(ev.memo)}</div>`:''}
       ${state.readOnly ? '' : '<button class="add-card-btn" id="btnEditByPrompt" style="margin-bottom:16px;">✏️ 일정 수정</button>'}
 
@@ -2261,6 +2288,9 @@ function clearMemoTarget(){
 function renderEditBanner(){
   const banner = document.getElementById('editBanner');
   const btn = document.getElementById('btnGenerate');
+  // 메모 저장·일정 수정 모드에선 '메모 추가' 버튼을 숨겨 저장 버튼만 남김
+  const memoBtn = document.getElementById('btnGenerateMemo');
+  if(memoBtn) memoBtn.classList.toggle('hidden', !!(state.memoTarget || state.editTarget));
   if(!banner) return;
   if(state.memoTarget){
     banner.classList.remove('hidden');
