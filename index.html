@@ -684,13 +684,6 @@
   .manage-item .mi-title{ font-size:13px; font-weight:600; }
   .manage-item .mi-role{ font-size:10.5px; color:var(--ink-soft); margin-top:2px; font-family:'IBM Plex Mono',monospace; }
   .manage-item .btn-del, .manage-item .btn-edit{ margin-left:8px; }
-  .mi-start{
-    margin-top:8px; font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:600;
-    background:none; border:1.5px solid var(--teal); color:var(--teal);
-    border-radius:6px; padding:4px 11px; cursor:pointer;
-  }
-  .mi-start:hover{ background:var(--teal-soft); }
-  .mi-start.current{ background:var(--teal-soft); cursor:default; }
 
   .tabs{ display:flex; gap:4px; align-items:flex-end; }
   .cover-tab{ cursor:pointer; justify-content:center; min-width:150px; }
@@ -992,8 +985,6 @@ async function loadMemberBoard(preferBoardId){
   });
 
   let chosen = preferBoardId ? state.myBoards.find(b=>b.board_id===preferBoardId) : null;
-  // 시작 화면 미설정 시 기본값: 내 소유(개인) 일정표 우선
-  if(!chosen) chosen = state.myBoards.find(b=> b.type==='owner' && (b.kind||'calendar') === state.tab);
   if(!chosen) chosen = state.myBoards.find(b=> (b.kind||'calendar') === state.tab);
   if(!chosen) chosen = state.myBoards[0];
   await activateBoard(chosen);
@@ -1289,10 +1280,7 @@ function addWorksheet(subjectId){
 
 // 로그인 성공 후: 내 일정표 로드 + URL의 join/code 처리
 async function afterLogin(){
-  // 사용자가 지정한 '시작 화면' 일정표가 있으면 그걸 먼저 연다 (브라우저에 저장됨)
-  let startId;
-  try{ const { data:{ user } } = await sb.auth.getUser(); startId = user ? localStorage.getItem('startBoard:'+user.id) : null; }catch(e){ startId = null; }
-  await loadMemberBoard(startId || undefined);
+  await loadMemberBoard();
   const params = new URLSearchParams(location.search);
   const joinCode = params.get('join');
   const viewCode = params.get('code');
@@ -1345,23 +1333,13 @@ function openManagePanel(){
   renderPanel();
   openPanel();
 }
-// 실제로 로그인 시 먼저 열리는 일정표 id (명시 설정값 없으면 내 소유 개인 일정표)
-function effectiveStartBoardId(){
-  const explicit = state.myUserId ? localStorage.getItem('startBoard:'+state.myUserId) : null;
-  if(explicit && (state.myBoards||[]).some(b=>b.board_id===explicit)) return explicit;
-  const own = (state.myBoards||[]).find(b=> b.type==='owner' && (b.kind||'calendar')==='calendar');
-  return own ? own.board_id : null;
-}
-
 function renderManagePanel(){
   const body = document.getElementById('panelBody');
   const kind = state.tab;
   const kindWord = kind==='drive' ? '드라이브' : '일정표';
   const list = (state.myBoards||[]).filter(b=> (b.kind||'calendar')===kind);
-  const startId = effectiveStartBoardId();
   const rows = list.map(m=>{
     const isCurrent = m.board_id === state.boardId;
-    const isStart = m.board_id === startId;
     const roleLabel = m.type==='owner' ? ('내 '+kindWord+' (소유자·편집가능)')
       : m.type==='editor' ? ('공유 '+kindWord+' (편집가능)')
       : ('보기 전용 '+kindWord);
@@ -1369,15 +1347,11 @@ function renderManagePanel(){
     const editBtn = `<button class="btn-edit" data-id="${m.board_id}" title="이름 변경">✏️</button>`;
     const delBtn = `<button class="btn-del" data-id="${m.board_id}" data-type="${m.type}">삭제</button>`;
     const actions = (m.type==='owner') ? (editBtn + delBtn) : delBtn;
-    const startBtn = isStart
-      ? '<button class="mi-start current" disabled>✓ 현재 시작 화면</button>'
-      : `<button class="mi-start" data-start="${m.board_id}">시작 화면으로 설정</button>`;
     return `
       <div class="manage-item ${isCurrent?'current':''}">
         <div class="mi-main" data-switch="${m.board_id}">
           <div class="mi-title">${title}${isCurrent?' ✓':''}</div>
           <div class="mi-role">${roleLabel}</div>
-          ${startBtn}
         </div>
         ${actions}
       </div>`;
@@ -1390,13 +1364,6 @@ function renderManagePanel(){
   `;
   body.querySelectorAll('[data-switch]').forEach(el=>{
     el.addEventListener('click', ()=> switchBoard(el.dataset.switch));
-  });
-  body.querySelectorAll('.mi-start[data-start]').forEach(btn=>{
-    btn.addEventListener('click', (e)=>{
-      e.stopPropagation();
-      if(state.myUserId) localStorage.setItem('startBoard:'+state.myUserId, btn.dataset.start);
-      renderManagePanel();
-    });
   });
   body.querySelectorAll('.btn-del').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
