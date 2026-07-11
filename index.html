@@ -1345,12 +1345,20 @@ function openManagePanel(){
   renderPanel();
   openPanel();
 }
+// 실제로 로그인 시 먼저 열리는 일정표 id (명시 설정값 없으면 내 소유 개인 일정표)
+function effectiveStartBoardId(){
+  const explicit = state.myUserId ? localStorage.getItem('startBoard:'+state.myUserId) : null;
+  if(explicit && (state.myBoards||[]).some(b=>b.board_id===explicit)) return explicit;
+  const own = (state.myBoards||[]).find(b=> b.type==='owner' && (b.kind||'calendar')==='calendar');
+  return own ? own.board_id : null;
+}
+
 function renderManagePanel(){
   const body = document.getElementById('panelBody');
   const kind = state.tab;
   const kindWord = kind==='drive' ? '드라이브' : '일정표';
   const list = (state.myBoards||[]).filter(b=> (b.kind||'calendar')===kind);
-  const startId = state.myUserId ? localStorage.getItem('startBoard:'+state.myUserId) : null;
+  const startId = effectiveStartBoardId();
   const rows = list.map(m=>{
     const isCurrent = m.board_id === state.boardId;
     const isStart = m.board_id === startId;
