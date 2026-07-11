@@ -685,12 +685,12 @@
   .manage-item .mi-role{ font-size:10.5px; color:var(--ink-soft); margin-top:2px; font-family:'IBM Plex Mono',monospace; }
   .manage-item .btn-del, .manage-item .btn-edit{ margin-left:8px; }
   .mi-start{
-    margin-top:7px; font-family:'IBM Plex Mono',monospace; font-size:10.5px;
-    background:none; border:1px solid var(--paper-edge); color:var(--ink-soft);
-    border-radius:6px; padding:3px 9px; cursor:pointer;
+    margin-top:8px; font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:600;
+    background:none; border:1.5px solid var(--teal); color:var(--teal);
+    border-radius:6px; padding:4px 11px; cursor:pointer;
   }
-  .mi-start:hover{ border-color:var(--teal); color:var(--teal); }
-  .mi-start.current{ border-color:var(--teal); color:var(--teal); background:var(--teal-soft); cursor:default; }
+  .mi-start:hover{ background:var(--teal-soft); }
+  .mi-start.current{ background:var(--teal-soft); cursor:default; }
 
   .tabs{ display:flex; gap:4px; align-items:flex-end; }
   .cover-tab{ cursor:pointer; justify-content:center; min-width:150px; }
@@ -992,6 +992,8 @@ async function loadMemberBoard(preferBoardId){
   });
 
   let chosen = preferBoardId ? state.myBoards.find(b=>b.board_id===preferBoardId) : null;
+  // 시작 화면 미설정 시 기본값: 내 소유(개인) 일정표 우선
+  if(!chosen) chosen = state.myBoards.find(b=> b.type==='owner' && (b.kind||'calendar') === state.tab);
   if(!chosen) chosen = state.myBoards.find(b=> (b.kind||'calendar') === state.tab);
   if(!chosen) chosen = state.myBoards[0];
   await activateBoard(chosen);
@@ -1360,8 +1362,8 @@ function renderManagePanel(){
     const delBtn = `<button class="btn-del" data-id="${m.board_id}" data-type="${m.type}">삭제</button>`;
     const actions = (m.type==='owner') ? (editBtn + delBtn) : delBtn;
     const startBtn = isStart
-      ? '<button class="mi-start current" disabled>🏠 현재 시작 화면</button>'
-      : `<button class="mi-start" data-start="${m.board_id}">🏠 시작 화면으로 설정</button>`;
+      ? '<button class="mi-start current" disabled>✓ 현재 시작 화면</button>'
+      : `<button class="mi-start" data-start="${m.board_id}">시작 화면으로 설정</button>`;
     return `
       <div class="manage-item ${isCurrent?'current':''}">
         <div class="mi-main" data-switch="${m.board_id}">
