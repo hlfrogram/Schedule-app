@@ -332,16 +332,16 @@
     color:var(--teal);
     padding:0; margin-bottom:14px;
   }
+  /* 일정표 관리처럼 카드 하나가 일정 정보 + 삭제 버튼을 함께 감쌈 */
   .event-list-item{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
     background:var(--white-note);
     border:1px solid var(--paper-edge);
     border-radius:8px;
     padding:12px 14px;
     margin-bottom:10px;
-    cursor:pointer;
-    transition:transform .12s ease;
   }
-  .event-list-item:hover{transform:translateX(2px);}
+  .event-list-item .ev-main{ flex:1; min-width:0; cursor:pointer; }
   .event-list-item .t{font-weight:600; font-size:14px;}
   .event-list-item .m{font-size:12px; color:var(--ink-soft); margin-top:3px;}
   .add-card-btn{
@@ -481,9 +481,6 @@
     border:1px solid var(--teal);
   }
 
-  /* 이 날의 일정 목록 항목 */
-  .event-list-row{ display:flex; align-items:center; gap:6px; margin-bottom:10px; }
-  .event-list-row .event-list-item{ flex:1; margin-bottom:0; }
 
   /* 삭제 버튼 공통 스타일 (일정표 관리 삭제 버튼 기준) */
   .btn-del{
@@ -492,6 +489,22 @@
     border-radius:6px; padding:4px 8px; font-size:10.5px; cursor:pointer;
   }
   .btn-del:hover{ background:var(--rust); color:#fff; }
+  /* 메모: 액션 행 · 인라인 수정 · 사진 개별 삭제 */
+  .note-actions{ display:flex; justify-content:flex-end; gap:6px; margin-top:10px; }
+  .note-edit-area{
+    width:100%; font-family:'Inter',sans-serif; font-size:13px; line-height:1.5;
+    padding:9px 10px; margin-top:2px;
+    border:1px solid var(--paper-edge); border-radius:6px;
+    background:#fff; color:var(--ink); resize:vertical; min-height:70px;
+  }
+  .note-photo-del{
+    position:absolute; top:-7px; right:-7px;
+    width:20px; height:20px; border-radius:50%;
+    background:var(--rust); color:#fff; border:none; cursor:pointer;
+    font-size:11px; line-height:1; display:flex; align-items:center; justify-content:center;
+    box-shadow:0 1px 3px rgba(0,0,0,0.3);
+  }
+  .note-photo-del:hover{ filter:brightness(1.1); }
   /* 이름 변경 등 보조 버튼 공통 스타일 */
   .btn-edit{
     flex:0 0 auto; white-space:nowrap;
@@ -1759,8 +1772,8 @@ function renderPanel(){
       <div class="panel-date">${fmtDateLabel(dateKey)}</div>
       <div class="panel-heading">이 날의 일정</div>
       ${evs.length ? evs.map(e=>`
-        <div class="event-list-row">
-          <div class="event-list-item" data-id="${e.id}">
+        <div class="event-list-item">
+          <div class="ev-main" data-id="${e.id}">
             <div class="t">${escapeHtml(e.title)}</div>
             <div class="m">${e.time||''} · ${escapeHtml(e.location||'')}</div>
           </div>
@@ -1772,7 +1785,7 @@ function renderPanel(){
       <div id="dayNoteView"></div>
       ${state.readOnly ? '' : '<button class="add-card-btn" id="btnMemoPrompt">✏️ 이 날의 메모 수정</button>'}
     `;
-    body.querySelectorAll('.event-list-item').forEach(el=>{
+    body.querySelectorAll('.ev-main').forEach(el=>{
       el.addEventListener('click', ()=>{ state.ui.eventId = el.dataset.id; state.ui.view='detail'; renderPanel(); });
     });
     if(!state.readOnly){
@@ -2022,26 +2035,88 @@ function renderDayNoteView(dateKey){
   const note = state.dayNotes[dateKey] || { text:'', photos:[] };
   const hasText = note.text && note.text.trim();
   const hasPhoto = note.photos && note.photos.length;
-  const canDelete = (hasText || hasPhoto) && !state.readOnly;
+  const editable = !state.readOnly;
   el.innerHTML = `
-    ${hasText ? `<div class="detail-memo" style="white-space:pre-wrap;">${escapeHtml(note.text)}</div>` : (hasPhoto ? '' : '<p class="empty-hint">아직 메모가 없어요.</p>')}
+    ${hasText ? `<div class="detail-memo" id="noteText" style="white-space:pre-wrap;">${escapeHtml(note.text)}</div>` : (hasPhoto ? '' : '<p class="empty-hint">아직 메모가 없어요.</p>')}
     <div class="photo-row" id="notephotoRow"></div>
-    ${canDelete ? '<div style="display:flex; justify-content:flex-end; margin-top:10px;"><button class="btn-del" id="btnDeleteNote">메모 삭제</button></div>' : ''}
+    ${(editable && (hasText || hasPhoto)) ? `
+      <div class="note-actions" id="noteActions">
+        ${hasText ? '<button class="btn-edit" id="btnEditNote">✏️ 수정</button>' : ''}
+        <button class="btn-del" id="btnDeleteNote">메모 삭제</button>
+      </div>` : ''}
   `;
   const row = document.getElementById('notephotoRow');
   if(hasPhoto){
-    row.innerHTML = note.photos.map(p=>`<div class="polaroid"><div class="tape"></div><img src="${p.dataUrl}"></div>`).join('');
+    row.innerHTML = note.photos.map(p=>`
+      <div class="polaroid" data-pid="${p.id}">
+        <div class="tape"></div>
+        <img src="${p.dataUrl}">
+        ${editable ? `<button class="note-photo-del" data-pid="${p.id}" title="사진 삭제">✕</button>` : ''}
+      </div>`).join('');
     row.querySelectorAll('.polaroid img').forEach(img=>{ img.style.cursor='zoom-in'; img.addEventListener('click', ()=> openLightbox(img.src)); });
+    if(editable){
+      row.querySelectorAll('.note-photo-del').forEach(btn=>{
+        btn.addEventListener('click', async (e)=>{
+          e.stopPropagation();
+          const pid = btn.dataset.pid;
+          note.photos = (note.photos||[]).filter(x=>x.id!==pid);
+          await saveOrClearNote(dateKey, note);
+          renderDayNoteView(dateKey);
+        });
+      });
+    }
   }
-  if(canDelete){
-    document.getElementById('btnDeleteNote').addEventListener('click', async ()=>{
-      if(!confirm('이 날의 메모를 삭제할까요? 되돌릴 수 없어요.')) return;
-      delete state.dayNotes[dateKey];
-      await dbDeleteDayNote(dateKey);
-      if(state.memoTarget === dateKey) clearMemoTarget();
-      renderDayNoteView(dateKey);
-    });
+  if(!editable) return;
+  const bd = document.getElementById('btnDeleteNote');
+  if(bd) bd.addEventListener('click', async ()=>{
+    if(!confirm('이 날의 메모를 삭제할까요? 되돌릴 수 없어요.')) return;
+    delete state.dayNotes[dateKey];
+    await dbDeleteDayNote(dateKey);
+    if(state.memoTarget === dateKey) clearMemoTarget();
+    renderDayNoteView(dateKey);
+  });
+  const be = document.getElementById('btnEditNote');
+  if(be) be.addEventListener('click', ()=> startInlineNoteEdit(dateKey));
+}
+
+// 메모 저장 도우미: 글도 사진도 없으면 삭제, 있으면 저장
+async function saveOrClearNote(dateKey, note){
+  const hasText = note.text && note.text.trim();
+  const hasPhoto = note.photos && note.photos.length;
+  if(!hasText && !hasPhoto){
+    delete state.dayNotes[dateKey];
+    await dbDeleteDayNote(dateKey);
+    if(state.memoTarget === dateKey) clearMemoTarget();
+  } else {
+    state.dayNotes[dateKey] = note;
+    await dbSaveDayNote(dateKey, note);
   }
+}
+
+// 메모 글을 그 자리에서 인라인으로 수동 수정 (AI·팝업 없음)
+function startInlineNoteEdit(dateKey){
+  const note = state.dayNotes[dateKey] || { text:'', photos:[] };
+  const textDiv = document.getElementById('noteText');
+  const actions = document.getElementById('noteActions');
+  if(!textDiv || !actions) return;
+  const ta = document.createElement('textarea');
+  ta.className = 'note-edit-area';
+  ta.value = note.text || '';
+  ta.setAttribute('autocapitalize','off');
+  ta.setAttribute('autocorrect','off');
+  ta.setAttribute('spellcheck','false');
+  textDiv.replaceWith(ta);
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+  actions.innerHTML = `
+    <button class="save-btn" id="btnSaveNote" style="margin-top:0; padding:6px 14px; font-size:12px;">저장</button>
+    <button class="btn-edit" id="btnCancelNote">취소</button>`;
+  document.getElementById('btnCancelNote').addEventListener('click', ()=> renderDayNoteView(dateKey));
+  document.getElementById('btnSaveNote').addEventListener('click', async ()=>{
+    note.text = ta.value;
+    await saveOrClearNote(dateKey, note);
+    renderDayNoteView(dateKey);
+  });
 }
 
 async function classifyPhoto(ev, photoId, btnEl){
