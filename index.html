@@ -776,7 +776,7 @@
       <button id="btnJoinGroup">👥 그룹 참여</button>
       <button id="btnAddViewer">👀 공유 코드 추가</button>
     </div>
-    <p class="subtitle" id="boardSubtitle">캘린더에 사진, 준비물, 안내 자료를 함께 정리하세요.</p>
+    <p class="subtitle" id="boardSubtitle">캘린더에 일정, 사진, 준비물, 안내 자료를 함께 정리하세요.</p>
 
     <div id="calendarContent">
     <div class="cal-header">
@@ -943,7 +943,7 @@ function enterApp(){
   document.getElementById('btnManageBoards').textContent = isDrive ? '📋 드라이브 관리' : '📋 일정표 관리';
   document.getElementById('boardSubtitle').textContent = isDrive
     ? '과목별로 학습지를 정리하고 함께 공유하세요.'
-    : '캘린더에 사진, 준비물, 안내 자료를 핀으로 꽂아두듯 함께 정리하세요.';
+    : '캘린더에 일정, 사진, 준비물, 안내 자료를 함께 정리하세요.';
   if(state.role === 'owner') document.getElementById('shareCodeText').textContent = state.shareCode;
   if(isDrive) renderDrive(); else renderCalendar();
 }
